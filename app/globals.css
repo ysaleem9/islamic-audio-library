@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  --font-amiri: "Amiri", Georgia, serif;
+  --font-ibm-arabic: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
+  --bg-parchment: #faf8f4;
+  --bg-card: #ffffff;
+  --border-sand: #e6dfd1;
+  --emerald-deep: #14533c;
+  --emerald-dark: #0e3d2b;
+  --emerald-soft: #eef5f1;
+  --gold-accent: #b88a44;
+  --gold-soft: #f9f3e7;
+  --ink-primary: #1a2420;
+  --ink-muted: #5a6660;
+}
+
+@layer base {
+  html {
+    direction: rtl;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--bg-parchment);
+    color: var(--ink-primary);
+    font-family: var(--font-ibm-arabic), "Segoe UI", Tahoma, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-serif-arabic {
+    font-family: var(--font-amiri), Georgia, serif;
+  }
+}
+
+/* Subtle Islamic geometric pattern for hero and series headers */
+.islamic-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.08' stroke-width='1'%3E%3Cpath d='M30 0 L37.5 22.5 L60 30 L37.5 37.5 L30 60 L22.5 37.5 L0 30 L22.5 22.5 Z'/%3E%3Ccircle cx='30' cy='30' r='8'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.islamic-pattern-dark {
+  background-image: url("data:image/svg+xml,%3Csvg width='48' height='48' viewBox='0 0 48 48' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%2314533c' stroke-opacity='0.05' stroke-width='1'%3E%3Cpath d='M24 0 L30 18 L48 24 L30 30 L24 48 L18 30 L0 24 L18 18 Z'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* Custom audio range input */
+input[type="range"].audio-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"].audio-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+}
+
+input[type="range"].audio-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #14533c;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  margin-top: -4px;
+  transition: transform 0.15s ease;
+}
+
+input[type="range"].audio-range:hover::-webkit-slider-thumb {
+  transform: scale(1.18);
+}
