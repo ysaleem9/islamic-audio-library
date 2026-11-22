@@ -4,10 +4,10 @@ import type { SiteSettings } from "@/lib/types";
 
 export function Footer({ settings }: { settings: SiteSettings }) {
   return (
-    <footer className="mt-20 border-t border-[#e6dfd1] bg-white/70 pb-28">
-      <div className="max-w-6xl mx-auto px-4 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-[#5a6660]">
+    <footer className="mt-20 border-t border-[#EBC6DD] bg-white/70 pb-28">
+      <div className="max-w-6xl mx-auto px-4 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-[#6E4E65]">
         <div className="text-center sm:text-right">
-          <p className="font-serif-arabic text-lg font-bold text-[#14533c]">{settings.siteName}</p>
+          <p className="font-serif-arabic text-lg font-bold text-[#8E3A7A]">{settings.siteName}</p>
           <p className="mt-1">{settings.sheikhName} — جميع الدروس متاحة للنفع العام وللتحميل المجاني</p>
         </div>
 
@@ -17,7 +17,7 @@ export function Footer({ settings }: { settings: SiteSettings }) {
               href={settings.telegramUrl}
               target="_blank"
               rel="noreferrer"
-              className="hover:text-[#14533c] transition-colors"
+              className="hover:text-[#8E3A7A] transition-colors"
             >
               تيليجرام
             </a>
@@ -27,7 +27,7 @@ export function Footer({ settings }: { settings: SiteSettings }) {
               href={settings.youtubeUrl}
               target="_blank"
               rel="noreferrer"
-              className="hover:text-[#14533c] transition-colors"
+              className="hover:text-[#8E3A7A] transition-colors"
             >
               يوتيوب
             </a>
@@ -37,12 +37,12 @@ export function Footer({ settings }: { settings: SiteSettings }) {
               href={settings.whatsappUrl}
               target="_blank"
               rel="noreferrer"
-              className="hover:text-[#14533c] transition-colors"
+              className="hover:text-[#8E3A7A] transition-colors"
             >
               واتساب
             </a>
           )}
-          <Link href="/admin" className="hover:text-[#14533c] transition-colors">
+          <Link href="/admin" className="hover:text-[#8E3A7A] transition-colors">
             إدارة الموقع
           </Link>
         </div>

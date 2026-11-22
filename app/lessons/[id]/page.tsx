@@ -1,11 +1,14 @@
 import React from "react";
-import { notFound } from "next/navigation";
-import { getLessonById } from "@/lib/store";
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
-import { LessonDetailClient } from "@/components/LessonDetailClient";
+import fallbackData from "@/data/db.json";
+import { LessonPageDynamicClient } from "@/components/LessonPageDynamicClient";
 
-export const dynamic = "force-dynamic";
+export function generateStaticParams() {
+  const ids = new Set<string>(["placeholder"]);
+  for (const l of fallbackData.lessons) {
+    ids.add(l.id);
+  }
+  return Array.from(ids).map((id) => ({ id }));
+}
 
 export default async function LessonPage({
   params,
@@ -13,19 +16,5 @@ export default async function LessonPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const result = await getLessonById(id);
-  if (!result) notFound();
-
-  return (
-    <>
-      <Navbar siteName={result.settings.siteName} />
-      <LessonDetailClient
-        lesson={result.lesson}
-        series={result.series}
-        relatedLessons={result.relatedLessons}
-        sheikhName={result.settings.sheikhName}
-      />
-      <Footer settings={result.settings} />
-    </>
-  );
+  return <LessonPageDynamicClient initialId={id} />;
 }

@@ -1,11 +1,15 @@
 import React from "react";
-import { notFound } from "next/navigation";
-import { getSeriesByIdOrSlug } from "@/lib/store";
-import { Navbar } from "@/components/Navbar";
-import { Footer } from "@/components/Footer";
-import { SeriesDetailClient } from "@/components/SeriesDetailClient";
+import fallbackData from "@/data/db.json";
+import { SeriesPageDynamicClient } from "@/components/SeriesPageDynamicClient";
 
-export const dynamic = "force-dynamic";
+export function generateStaticParams() {
+  const ids = new Set<string>(["placeholder", "waqfa-maa-ayah", "ser-waqfa"]);
+  for (const s of fallbackData.series) {
+    ids.add(s.id);
+    ids.add(s.slug);
+  }
+  return Array.from(ids).map((id) => ({ id }));
+}
 
 export default async function SeriesPage({
   params,
@@ -13,18 +17,5 @@ export default async function SeriesPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const result = await getSeriesByIdOrSlug(id);
-  if (!result) notFound();
-
-  return (
-    <>
-      <Navbar siteName={result.settings.siteName} />
-      <SeriesDetailClient
-        series={result.series}
-        lessons={result.lessons}
-        sheikhName={result.settings.sheikhName}
-      />
-      <Footer settings={result.settings} />
-    </>
-  );
+  return <SeriesPageDynamicClient initialId={id} />;
 }

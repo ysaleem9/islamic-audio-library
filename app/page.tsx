@@ -1,13 +1,25 @@
-import React from "react";
-import { getAllData } from "@/lib/store";
+"use client";
+
+import React, { useEffect, useState } from "react";
+import type { DatabasePayload } from "@/lib/types";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { HomeLibraryClient } from "@/components/HomeLibraryClient";
+import fallbackData from "@/data/db.json";
 
-export const dynamic = "force-dynamic";
+export default function HomePage() {
+  const [data, setData] = useState<DatabasePayload>(fallbackData as unknown as DatabasePayload);
 
-export default async function HomePage() {
-  const data = await getAllData();
+  useEffect(() => {
+    fetch("/api/data", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((fresh) => {
+        if (fresh && fresh.settings) {
+          setData(fresh as DatabasePayload);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   return (
     <>

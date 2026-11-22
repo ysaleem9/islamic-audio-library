@@ -22,19 +22,19 @@ export function SeriesDetailClient({
 
   return (
     <main className="flex-1">
-      <section className="relative overflow-hidden bg-gradient-to-bl from-[#0e3d2b] via-[#14533c] to-[#1a6348] text-white">
+      <section className="relative overflow-hidden bg-gradient-to-bl from-[#6F2B5F] via-[#8E3A7A] to-[#B8559B] text-white">
         <div className="absolute inset-0 islamic-pattern pointer-events-none" />
         <div className="relative max-w-5xl mx-auto px-4 py-12 sm:py-16">
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-sm text-[#d4e7df] hover:text-white mb-6 transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-[#EBC6DD] hover:text-white mb-6 transition-colors"
           >
             <ArrowRight className="w-4 h-4" />
             <span>العودة إلى المكتبة الرئيسية</span>
           </Link>
 
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <span className="px-3 py-1 rounded-full bg-white/15 text-xs font-medium text-[#f3dfb8]">
+            <span className="px-3 py-1 rounded-full bg-white/15 text-xs font-medium text-[#FAF3F6]">
               {series.category}
             </span>
             <span className="px-3 py-1 rounded-full bg-white/10 text-xs text-white/90">
@@ -46,10 +46,10 @@ export function SeriesDetailClient({
             {series.title}
           </h1>
 
-          <p className="mt-2 text-sm text-[#cfe3da]">{sheikhName}</p>
+          <p className="mt-2 text-sm text-[#EBC6DD]">{sheikhName}</p>
 
           {series.description && (
-            <p className="mt-4 text-base text-[#e6f1ec] leading-relaxed max-w-3xl">
+            <p className="mt-4 text-base text-[#FAF3F6]/90 leading-relaxed max-w-3xl">
               {series.description}
             </p>
           )}
@@ -59,21 +59,21 @@ export function SeriesDetailClient({
               <button
                 type="button"
                 onClick={() => playLesson(lessons[0], lessons)}
-                className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-[#b88a44] hover:bg-[#a67a38] text-white font-semibold shadow-md transition-colors cursor-pointer"
+                className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-[#B8559B] hover:bg-[#D68FBF] hover:text-[#2D1626] border border-[#EBC6DD]/40 text-white font-semibold shadow-md transition-colors cursor-pointer"
               >
                 <Play className="w-4 h-4 fill-current" />
                 <span>تشغيل السلسلة من البداية</span>
               </button>
             )}
 
-            <div className="flex items-center gap-4 text-sm text-[#d9ebe3]">
+            <div className="flex items-center gap-4 text-sm text-[#FAF3F6]">
               <span className="inline-flex items-center gap-1.5">
-                <BookOpen className="w-4 h-4 text-[#f3dfb8]" />
+                <BookOpen className="w-4 h-4 text-[#EBC6DD]" />
                 {lessons.length} دروس
               </span>
               {totalSeconds > 0 && (
                 <span className="inline-flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-[#f3dfb8]" />
+                  <Clock className="w-4 h-4 text-[#EBC6DD]" />
                   {formatTotalDurationArabic(totalSeconds)}
                 </span>
               )}
@@ -84,7 +84,7 @@ export function SeriesDetailClient({
 
       <section className="max-w-5xl mx-auto px-4 mt-10">
         {lessons.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#d8cfc0] bg-white p-12 text-center text-sm text-[#5a6660]">
+          <div className="rounded-2xl border border-dashed border-[#D68FBF] bg-white p-12 text-center text-sm text-[#6E4E65]">
             لم تُضف دروس إلى هذه السلسلة بعد.
           </div>
         ) : (

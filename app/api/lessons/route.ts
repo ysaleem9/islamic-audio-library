@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/auth";
+import { getAdminSession, hasAdminPermission } from "@/lib/auth";
 import { createLesson, getAllData } from "@/lib/store";
 
 export async function GET() {
@@ -17,6 +17,15 @@ export async function POST(request: Request) {
 
     // Support batch import from Internet Archive item
     if (Array.isArray(body.lessons)) {
+      if (
+        !hasAdminPermission(session, "import_archive") &&
+        !hasAdminPermission(session, "manage_lessons")
+      ) {
+        return NextResponse.json(
+          { error: "ليس لديك صلاحية استيراد أو إضافة الدروس" },
+          { status: 403 }
+        );
+      }
       const created = [];
       for (const item of body.lessons) {
         if (!item.title || !item.audioUrl) continue;
@@ -36,6 +45,10 @@ export async function POST(request: Request) {
         created.push(lesson);
       }
       return NextResponse.json({ created, count: created.length }, { status: 201 });
+    }
+
+    if (!hasAdminPermission(session, "manage_lessons")) {
+      return NextResponse.json({ error: "ليس لديك صلاحية إدارة الدروس" }, { status: 403 });
     }
 
     if (!body.title || !String(body.title).trim()) {

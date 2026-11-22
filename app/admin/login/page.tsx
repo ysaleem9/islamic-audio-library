@@ -7,7 +7,7 @@ import { ArrowRight, Headphones, Lock, Loader2 } from "lucide-react";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -38,15 +38,15 @@ export default function AdminLoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12 islamic-pattern-dark">
-      <div className="w-full max-w-md rounded-3xl border border-[#e6dfd1] bg-white shadow-lg overflow-hidden">
-        <div className="bg-gradient-to-bl from-[#0e3d2b] to-[#14533c] text-white p-7 text-center relative">
+      <div className="w-full max-w-md rounded-3xl border border-[#EBC6DD] bg-white shadow-lg overflow-hidden">
+        <div className="bg-gradient-to-bl from-[#6F2B5F] via-[#8E3A7A] to-[#B8559B] text-white p-7 text-center relative">
           <div className="absolute inset-0 islamic-pattern pointer-events-none" />
           <div className="relative">
             <div className="w-12 h-12 rounded-2xl bg-white/15 mx-auto flex items-center justify-center mb-3">
-              <Headphones className="w-6 h-6 text-[#f3dfb8]" />
+              <Headphones className="w-6 h-6 text-[#FAF3F6]" />
             </div>
             <h1 className="font-serif-arabic text-2xl font-bold">لوحة تحكم المكتبة الصوتية</h1>
-            <p className="text-xs text-[#d1e4dc] mt-1">تسجيل الدخول لإدارة الدروس والسلاسل</p>
+            <p className="text-xs text-[#EBC6DD] mt-1">تسجيل الدخول لإدارة الدروس والسلاسل</p>
           </div>
         </div>
 
@@ -58,7 +58,7 @@ export default function AdminLoginPage() {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-[#1a2420] mb-1.5">
+            <label className="block text-sm font-medium text-[#2D1626] mb-1.5">
               اسم المستخدم
             </label>
             <input
@@ -67,12 +67,12 @@ export default function AdminLoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               dir="ltr"
-              className="w-full px-4 py-2.5 rounded-xl border border-[#dfd6c5] focus:outline-none focus:border-[#14533c] text-left"
+              className="w-full px-4 py-2.5 rounded-xl border border-[#EBC6DD] focus:outline-none focus:border-[#8E3A7A] text-left"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#1a2420] mb-1.5">
+            <label className="block text-sm font-medium text-[#2D1626] mb-1.5">
               كلمة المرور
             </label>
             <input
@@ -82,30 +82,23 @@ export default function AdminLoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               dir="ltr"
-              className="w-full px-4 py-2.5 rounded-xl border border-[#dfd6c5] focus:outline-none focus:border-[#14533c] text-left"
+              className="w-full px-4 py-2.5 rounded-xl border border-[#EBC6DD] focus:outline-none focus:border-[#8E3A7A] text-left"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-[#14533c] hover:bg-[#0e3d2b] text-white font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 cursor-pointer"
+            className="w-full py-3 rounded-xl bg-[#8E3A7A] hover:bg-[#6F2B5F] text-white font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 cursor-pointer"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
             <span>دخول إلى لوحة التحكم</span>
           </button>
 
-          <div className="rounded-xl bg-[#faf8f4] border border-[#e6dfd1] p-3.5 text-xs text-[#5a6660] leading-relaxed">
-            للتجربة المحلية الافتراضية قبل ضبط ملف <code className="font-mono">.env.local</code>:
-            <br />
-            اسم المستخدم: <strong className="text-[#1a2420]" dir="ltr">admin</strong> — كلمة المرور:{" "}
-            <strong className="text-[#1a2420]" dir="ltr">admin123</strong>
-          </div>
-
           <div className="text-center pt-1">
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 text-sm text-[#14533c] hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm text-[#8E3A7A] hover:underline"
             >
               <ArrowRight className="w-4 h-4" />
               <span>العودة إلى الموقع</span>

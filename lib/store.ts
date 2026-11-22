@@ -2,11 +2,56 @@ import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { DatabasePayload, Lesson, Series, SiteSettings } from "./types";
+import {
+  ALL_ADMIN_PERMISSIONS,
+  type AdminPermission,
+  type AdminUser,
+  type AdminUserRecord,
+  type DatabasePayload,
+  type Lesson,
+  type Series,
+  type SiteSettings,
+} from "./types";
 import { createSlug } from "./format";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
+
+interface LocalDatabaseFile extends DatabasePayload {
+  admins?: AdminUserRecord[];
+}
+
+// Mutex queue to make concurrent local DB read-modify-write operations atomic
+let localDbWriteQueue: Promise<unknown> = Promise.resolve();
+function withLocalDbLock<T>(fn: () => Promise<T>): Promise<T> {
+  const next = localDbWriteQueue.then(fn, fn);
+  localDbWriteQueue = next.then(
+    () => undefined,
+    () => undefined
+  );
+  return next;
+}
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+export function verifyPasswordHash(password: string, storedHash: string): boolean {
+  const [salt, key] = (storedHash || "").split(":");
+  if (!salt || !key) return false;
+  const hashBuffer = crypto.scryptSync(password, salt, 64);
+  const keyBuffer = Buffer.from(key, "hex");
+  if (hashBuffer.length !== keyBuffer.length) return false;
+  return crypto.timingSafeEqual(hashBuffer, keyBuffer);
+}
+
+export function toPublicAdminUser(record: AdminUserRecord): AdminUser {
+  const { passwordHash, ...rest } = record;
+  void passwordHash;
+  return rest;
+}
 
 const DEFAULT_DATA: DatabasePayload = {
   settings: {
@@ -163,8 +208,49 @@ const DEFAULT_DATA: DatabasePayload = {
   ],
 };
 
+export function isD1Configured(): boolean {
+  return Boolean(
+    process.env.CLOUDFLARE_ACCOUNT_ID &&
+      process.env.CLOUDFLARE_D1_DATABASE_ID &&
+      process.env.CLOUDFLARE_API_TOKEN
+  );
+}
+
 export function isSupabaseConfigured(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+async function queryCloudflareD1<T = Record<string, unknown>>(
+  sql: string,
+  params: unknown[] = []
+): Promise<T[]> {
+  const accountId =
+    process.env.CLOUDFLARE_ACCOUNT_ID || "79403c73437277b14962cde46f2dafe1";
+  const dbId =
+    process.env.CLOUDFLARE_D1_DATABASE_ID || "8c05913f-0451-4666-b720-154df952c173";
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  if (!token) throw new Error("CLOUDFLARE_API_TOKEN is required for D1 queries");
+
+  const res = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${dbId}/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ sql, params }),
+      cache: "no-store",
+    }
+  );
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`D1 query failed (${res.status}): ${errText.slice(0, 200)}`);
+  }
+  const json = (await res.json()) as {
+    result?: Array<{ results?: T[] }>;
+  };
+  return json.result?.[0]?.results || [];
 }
 
 let cachedSupabase: SupabaseClient | null = null;
@@ -179,23 +265,25 @@ function getSupabase(): SupabaseClient {
   return cachedSupabase;
 }
 
-async function readLocalDb(): Promise<DatabasePayload> {
+async function readLocalDb(): Promise<LocalDatabaseFile> {
   try {
     const raw = await fs.readFile(DB_FILE, "utf8");
-    const parsed = JSON.parse(raw) as DatabasePayload;
+    const parsed = JSON.parse(raw) as LocalDatabaseFile;
     return {
       settings: { ...DEFAULT_DATA.settings, ...(parsed.settings || {}) },
       series: Array.isArray(parsed.series) ? parsed.series : [],
       lessons: Array.isArray(parsed.lessons) ? parsed.lessons : [],
+      admins: Array.isArray(parsed.admins) ? parsed.admins : [],
     };
   } catch {
     await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(DB_FILE, JSON.stringify(DEFAULT_DATA, null, 2), "utf8");
-    return structuredClone(DEFAULT_DATA);
+    const initial: LocalDatabaseFile = { ...structuredClone(DEFAULT_DATA), admins: [] };
+    await fs.writeFile(DB_FILE, JSON.stringify(initial, null, 2), "utf8");
+    return initial;
   }
 }
 
-async function writeLocalDb(data: DatabasePayload): Promise<void> {
+async function writeLocalDb(data: LocalDatabaseFile): Promise<void> {
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.writeFile(DB_FILE, JSON.stringify(data, null, 2), "utf8");
 }
@@ -250,6 +338,19 @@ function mapSupabaseLesson(row: Record<string, unknown>): Lesson {
 }
 
 export async function getAllData(): Promise<DatabasePayload> {
+  if (isD1Configured()) {
+    const [settingsRows, seriesRows, lessonsRows] = await Promise.all([
+      queryCloudflareD1("SELECT * FROM site_settings WHERE id = 'main' LIMIT 1"),
+      queryCloudflareD1("SELECT * FROM series ORDER BY sort_order ASC, created_at DESC"),
+      queryCloudflareD1("SELECT * FROM lessons ORDER BY published_at DESC, created_at DESC"),
+    ]);
+    return {
+      settings: mapSupabaseSettings(settingsRows[0] || null),
+      series: seriesRows.map(mapSupabaseSeries),
+      lessons: lessonsRows.map(mapSupabaseLesson),
+    };
+  }
+
   if (!isSupabaseConfigured()) {
     const db = await readLocalDb();
     db.series.sort((a, b) => a.sortOrder - b.sortOrder || b.createdAt.localeCompare(a.createdAt));
@@ -314,20 +415,49 @@ export async function getLessonById(id: string): Promise<{
 }
 
 export async function updateSettings(input: Partial<SiteSettings>): Promise<SiteSettings> {
+  if (isD1Configured()) {
+    const siteName = input.siteName?.trim() || DEFAULT_DATA.settings.siteName;
+    const sheikhName = input.sheikhName?.trim() || DEFAULT_DATA.settings.sheikhName;
+    const sheikhTitle = input.sheikhTitle?.trim() || "";
+    const bio = input.bio?.trim() || "";
+    const telegramUrl = input.telegramUrl?.trim() || "";
+    const youtubeUrl = input.youtubeUrl?.trim() || "";
+    const whatsappUrl = input.whatsappUrl?.trim() || "";
+
+    await queryCloudflareD1(
+      `INSERT INTO site_settings (id, site_name, sheikh_name, sheikh_title, bio, telegram_url, youtube_url, whatsapp_url, updated_at)
+       VALUES ('main', ?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         site_name = excluded.site_name,
+         sheikh_name = excluded.sheikh_name,
+         sheikh_title = excluded.sheikh_title,
+         bio = excluded.bio,
+         telegram_url = excluded.telegram_url,
+         youtube_url = excluded.youtube_url,
+         whatsapp_url = excluded.whatsapp_url,
+         updated_at = datetime('now')`,
+      [siteName, sheikhName, sheikhTitle, bio, telegramUrl, youtubeUrl, whatsappUrl]
+    );
+    const rows = await queryCloudflareD1("SELECT * FROM site_settings WHERE id = 'main' LIMIT 1");
+    return mapSupabaseSettings(rows[0] || null);
+  }
+
   if (!isSupabaseConfigured()) {
-    const db = await readLocalDb();
-    db.settings = {
-      ...db.settings,
-      siteName: input.siteName?.trim() || db.settings.siteName,
-      sheikhName: input.sheikhName?.trim() || db.settings.sheikhName,
-      sheikhTitle: input.sheikhTitle?.trim() ?? db.settings.sheikhTitle,
-      bio: input.bio?.trim() ?? db.settings.bio,
-      telegramUrl: input.telegramUrl?.trim() ?? db.settings.telegramUrl,
-      youtubeUrl: input.youtubeUrl?.trim() ?? db.settings.youtubeUrl,
-      whatsappUrl: input.whatsappUrl?.trim() ?? db.settings.whatsappUrl,
-    };
-    await writeLocalDb(db);
-    return db.settings;
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      db.settings = {
+        ...db.settings,
+        siteName: input.siteName?.trim() || db.settings.siteName,
+        sheikhName: input.sheikhName?.trim() || db.settings.sheikhName,
+        sheikhTitle: input.sheikhTitle?.trim() ?? db.settings.sheikhTitle,
+        bio: input.bio?.trim() ?? db.settings.bio,
+        telegramUrl: input.telegramUrl?.trim() ?? db.settings.telegramUrl,
+        youtubeUrl: input.youtubeUrl?.trim() ?? db.settings.youtubeUrl,
+        whatsappUrl: input.whatsappUrl?.trim() ?? db.settings.whatsappUrl,
+      };
+      await writeLocalDb(db);
+      return db.settings;
+    });
   }
 
   const supabase = getSupabase();
@@ -374,11 +504,32 @@ export async function createSeries(input: {
     createdAt: new Date().toISOString(),
   };
 
-  if (!isSupabaseConfigured()) {
-    const db = await readLocalDb();
-    db.series.push(item);
-    await writeLocalDb(db);
+  if (isD1Configured()) {
+    await queryCloudflareD1(
+      `INSERT INTO series (id, title, slug, category, description, status, cover_accent, sort_order, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+      [
+        item.id,
+        item.title,
+        item.slug,
+        item.category,
+        item.description,
+        item.status,
+        item.coverAccent,
+        item.sortOrder,
+        item.createdAt,
+      ]
+    );
     return item;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      db.series.push(item);
+      await writeLocalDb(db);
+      return item;
+    });
   }
 
   const supabase = getSupabase();
@@ -404,19 +555,47 @@ export async function updateSeries(
   id: string,
   input: Partial<Pick<Series, "title" | "category" | "description" | "status" | "coverAccent" | "sortOrder">>
 ): Promise<Series | null> {
-  if (!isSupabaseConfigured()) {
-    const db = await readLocalDb();
-    const idx = db.series.findIndex((s) => s.id === id);
-    if (idx === -1) return null;
-    db.series[idx] = {
-      ...db.series[idx],
+  if (isD1Configured()) {
+    const existingRows = await queryCloudflareD1("SELECT * FROM series WHERE id = ?1 LIMIT 1", [id]);
+    if (!existingRows[0]) return null;
+    const current = mapSupabaseSeries(existingRows[0]);
+    const updated: Series = {
+      ...current,
       ...input,
-      title: input.title !== undefined ? input.title.trim() : db.series[idx].title,
-      category: input.category !== undefined ? input.category.trim() : db.series[idx].category,
-      description: input.description !== undefined ? input.description.trim() : db.series[idx].description,
+      title: input.title !== undefined ? input.title.trim() : current.title,
+      category: input.category !== undefined ? input.category.trim() : current.category,
+      description: input.description !== undefined ? input.description.trim() : current.description,
     };
-    await writeLocalDb(db);
-    return db.series[idx];
+    await queryCloudflareD1(
+      `UPDATE series SET title = ?1, category = ?2, description = ?3, status = ?4, cover_accent = ?5, sort_order = ?6 WHERE id = ?7`,
+      [
+        updated.title,
+        updated.category,
+        updated.description,
+        updated.status,
+        updated.coverAccent,
+        updated.sortOrder,
+        id,
+      ]
+    );
+    return updated;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      const idx = db.series.findIndex((s) => s.id === id);
+      if (idx === -1) return null;
+      db.series[idx] = {
+        ...db.series[idx],
+        ...input,
+        title: input.title !== undefined ? input.title.trim() : db.series[idx].title,
+        category: input.category !== undefined ? input.category.trim() : db.series[idx].category,
+        description: input.description !== undefined ? input.description.trim() : db.series[idx].description,
+      };
+      await writeLocalDb(db);
+      return db.series[idx];
+    });
   }
 
   const supabase = getSupabase();
@@ -434,14 +613,22 @@ export async function updateSeries(
 }
 
 export async function deleteSeries(id: string): Promise<boolean> {
-  if (!isSupabaseConfigured()) {
-    const db = await readLocalDb();
-    const before = db.series.length;
-    db.series = db.series.filter((s) => s.id !== id);
-    db.lessons = db.lessons.map((l) => (l.seriesId === id ? { ...l, seriesId: null } : l));
-    if (db.series.length === before) return false;
-    await writeLocalDb(db);
+  if (isD1Configured()) {
+    await queryCloudflareD1("UPDATE lessons SET series_id = NULL WHERE series_id = ?1", [id]);
+    await queryCloudflareD1("DELETE FROM series WHERE id = ?1", [id]);
     return true;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      const before = db.series.length;
+      db.series = db.series.filter((s) => s.id !== id);
+      db.lessons = db.lessons.map((l) => (l.seriesId === id ? { ...l, seriesId: null } : l));
+      if (db.series.length === before) return false;
+      await writeLocalDb(db);
+      return true;
+    });
   }
 
   const supabase = getSupabase();
@@ -485,11 +672,36 @@ export async function createLesson(input: {
     createdAt: new Date().toISOString(),
   };
 
-  if (!isSupabaseConfigured()) {
-    const db = await readLocalDb();
-    db.lessons.unshift(item);
-    await writeLocalDb(db);
+  if (isD1Configured()) {
+    await queryCloudflareD1(
+      `INSERT INTO lessons (id, title, series_id, episode_number, category, description, notes, audio_url, archive_identifier, duration_seconds, published_at, plays_count, is_featured, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?13)`,
+      [
+        item.id,
+        item.title,
+        item.seriesId,
+        item.episodeNumber,
+        item.category,
+        item.description,
+        item.notes,
+        item.audioUrl,
+        item.archiveIdentifier,
+        item.durationSeconds,
+        item.publishedAt,
+        item.isFeatured ? 1 : 0,
+        item.createdAt,
+      ]
+    );
     return item;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      db.lessons.unshift(item);
+      await writeLocalDb(db);
+      return item;
+    });
   }
 
   const supabase = getSupabase();
@@ -535,21 +747,56 @@ export async function updateLesson(
     >
   >
 ): Promise<Lesson | null> {
-  if (!isSupabaseConfigured()) {
-    const db = await readLocalDb();
-    const idx = db.lessons.findIndex((l) => l.id === id);
-    if (idx === -1) return null;
-    db.lessons[idx] = {
-      ...db.lessons[idx],
+  if (isD1Configured()) {
+    const rows = await queryCloudflareD1("SELECT * FROM lessons WHERE id = ?1 LIMIT 1", [id]);
+    if (!rows[0]) return null;
+    const current = mapSupabaseLesson(rows[0]);
+    const updated: Lesson = {
+      ...current,
       ...input,
-      title: input.title !== undefined ? input.title.trim() : db.lessons[idx].title,
-      audioUrl: input.audioUrl !== undefined ? input.audioUrl.trim() : db.lessons[idx].audioUrl,
-      category: input.category !== undefined ? input.category.trim() : db.lessons[idx].category,
-      description: input.description !== undefined ? input.description.trim() : db.lessons[idx].description,
-      notes: input.notes !== undefined ? input.notes.trim() : db.lessons[idx].notes,
+      title: input.title !== undefined ? input.title.trim() : current.title,
+      audioUrl: input.audioUrl !== undefined ? input.audioUrl.trim() : current.audioUrl,
+      category: input.category !== undefined ? input.category.trim() : current.category,
+      description: input.description !== undefined ? input.description.trim() : current.description,
+      notes: input.notes !== undefined ? input.notes.trim() : current.notes,
     };
-    await writeLocalDb(db);
-    return db.lessons[idx];
+    await queryCloudflareD1(
+      `UPDATE lessons SET title = ?1, series_id = ?2, episode_number = ?3, category = ?4, description = ?5, notes = ?6, audio_url = ?7, archive_identifier = ?8, duration_seconds = ?9, published_at = ?10, is_featured = ?11 WHERE id = ?12`,
+      [
+        updated.title,
+        updated.seriesId,
+        updated.episodeNumber,
+        updated.category,
+        updated.description,
+        updated.notes,
+        updated.audioUrl,
+        updated.archiveIdentifier,
+        updated.durationSeconds,
+        updated.publishedAt,
+        updated.isFeatured ? 1 : 0,
+        id,
+      ]
+    );
+    return updated;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      const idx = db.lessons.findIndex((l) => l.id === id);
+      if (idx === -1) return null;
+      db.lessons[idx] = {
+        ...db.lessons[idx],
+        ...input,
+        title: input.title !== undefined ? input.title.trim() : db.lessons[idx].title,
+        audioUrl: input.audioUrl !== undefined ? input.audioUrl.trim() : db.lessons[idx].audioUrl,
+        category: input.category !== undefined ? input.category.trim() : db.lessons[idx].category,
+        description: input.description !== undefined ? input.description.trim() : db.lessons[idx].description,
+        notes: input.notes !== undefined ? input.notes.trim() : db.lessons[idx].notes,
+      };
+      await writeLocalDb(db);
+      return db.lessons[idx];
+    });
   }
 
   const supabase = getSupabase();
@@ -572,13 +819,20 @@ export async function updateLesson(
 }
 
 export async function deleteLesson(id: string): Promise<boolean> {
-  if (!isSupabaseConfigured()) {
-    const db = await readLocalDb();
-    const before = db.lessons.length;
-    db.lessons = db.lessons.filter((l) => l.id !== id);
-    if (db.lessons.length === before) return false;
-    await writeLocalDb(db);
+  if (isD1Configured()) {
+    await queryCloudflareD1("DELETE FROM lessons WHERE id = ?1", [id]);
     return true;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      const before = db.lessons.length;
+      db.lessons = db.lessons.filter((l) => l.id !== id);
+      if (db.lessons.length === before) return false;
+      await writeLocalDb(db);
+      return true;
+    });
   }
 
   const supabase = getSupabase();
@@ -588,14 +842,23 @@ export async function deleteLesson(id: string): Promise<boolean> {
 }
 
 export async function incrementLessonPlay(id: string): Promise<void> {
-  if (!isSupabaseConfigured()) {
-    const db = await readLocalDb();
-    const found = db.lessons.find((l) => l.id === id);
-    if (found) {
-      found.playsCount += 1;
-      await writeLocalDb(db);
-    }
+  if (isD1Configured()) {
+    await queryCloudflareD1(
+      "UPDATE lessons SET plays_count = COALESCE(plays_count, 0) + 1 WHERE id = ?1",
+      [id]
+    );
     return;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      const found = db.lessons.find((l) => l.id === id);
+      if (found) {
+        found.playsCount += 1;
+        await writeLocalDb(db);
+      }
+    });
   }
 
   const supabase = getSupabase();
@@ -606,4 +869,338 @@ export async function incrementLessonPlay(id: string): Promise<void> {
       .update({ plays_count: Number(data.plays_count || 0) + 1 })
       .eq("id", id);
   }
+}
+
+// ==========================================
+// Multi-Admin & Granular Permissions Management
+// ==========================================
+
+function normalizePermissions(perms: unknown): AdminPermission[] {
+  if (!Array.isArray(perms)) return [];
+  return perms.filter((p): p is AdminPermission =>
+    ALL_ADMIN_PERMISSIONS.includes(p as AdminPermission)
+  );
+}
+
+function mapSupabaseAdmin(row: Record<string, unknown>): AdminUserRecord {
+  const role = row.role === "owner" ? "owner" : "admin";
+  let rawPerms = row.permissions;
+  if (typeof rawPerms === "string") {
+    try {
+      rawPerms = JSON.parse(rawPerms);
+    } catch {
+      rawPerms = [];
+    }
+  }
+  return {
+    id: String(row.id),
+    username: String(row.username),
+    displayName: String(row.display_name ?? row.username),
+    passwordHash: String(row.password_hash ?? ""),
+    role,
+    permissions:
+      role === "owner" ? [...ALL_ADMIN_PERMISSIONS] : normalizePermissions(rawPerms),
+    isActive: row.is_active !== false && row.is_active !== 0,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+    lastActiveAt: row.last_active_at ? String(row.last_active_at) : undefined,
+  };
+}
+
+export async function listAdminUsers(): Promise<AdminUser[]> {
+  if (isD1Configured()) {
+    const rows = await queryCloudflareD1("SELECT * FROM admin_users ORDER BY created_at ASC");
+    return rows.map((r) => toPublicAdminUser(mapSupabaseAdmin(r)));
+  }
+
+  if (!isSupabaseConfigured()) {
+    const db = await readLocalDb();
+    return (db.admins || []).map(toPublicAdminUser);
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("admin_users")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) {
+    // Graceful fallback if table hasn't been created in Supabase yet
+    return [];
+  }
+  return (data || []).map((row) => toPublicAdminUser(mapSupabaseAdmin(row)));
+}
+
+export async function getAdminUserByUsername(username: string): Promise<AdminUserRecord | null> {
+  const clean = username.trim().toLowerCase();
+  if (!clean) return null;
+
+  if (isD1Configured()) {
+    const rows = await queryCloudflareD1(
+      "SELECT * FROM admin_users WHERE lower(username) = ?1 LIMIT 1",
+      [clean]
+    );
+    return rows[0] ? mapSupabaseAdmin(rows[0]) : null;
+  }
+
+  if (!isSupabaseConfigured()) {
+    const db = await readLocalDb();
+    const found = (db.admins || []).find((a) => a.username.toLowerCase() === clean);
+    return found || null;
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("admin_users")
+    .select("*")
+    .ilike("username", clean)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapSupabaseAdmin(data);
+}
+
+export async function getAdminUserById(id: string): Promise<AdminUserRecord | null> {
+  if (isD1Configured()) {
+    const rows = await queryCloudflareD1("SELECT * FROM admin_users WHERE id = ?1 LIMIT 1", [id]);
+    return rows[0] ? mapSupabaseAdmin(rows[0]) : null;
+  }
+
+  if (!isSupabaseConfigured()) {
+    const db = await readLocalDb();
+    return (db.admins || []).find((a) => a.id === id) || null;
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("admin_users")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  return mapSupabaseAdmin(data);
+}
+
+export async function touchAdminActivity(id: string): Promise<void> {
+  const now = new Date().toISOString();
+  if (isD1Configured()) {
+    await queryCloudflareD1("UPDATE admin_users SET last_active_at = ?1 WHERE id = ?2", [
+      now,
+      id,
+    ]);
+    return;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      const admin = (db.admins || []).find((a) => a.id === id);
+      if (admin) {
+        admin.lastActiveAt = now;
+        await writeLocalDb(db);
+      }
+    });
+  }
+
+  const supabase = getSupabase();
+  await supabase.from("admin_users").update({ last_active_at: now }).eq("id", id);
+}
+
+export async function createAdminUser(input: {
+  username: string;
+  displayName: string;
+  password: string;
+  permissions: AdminPermission[];
+}): Promise<AdminUser> {
+  const username = input.username.trim().toLowerCase();
+  if (!/^[a-z0-9_.-]{3,32}$/.test(username)) {
+    throw new Error(
+      "اسم المستخدم يجب أن يتكون من 3 إلى 32 حرفاً إنجليزياً أو رقماً (بدون مسافات)"
+    );
+  }
+  if (!input.password || input.password.length < 6) {
+    throw new Error("كلمة المرور يجب أن تكون 6 خانات على الأقل");
+  }
+
+  const existing = await getAdminUserByUsername(username);
+  if (existing) {
+    throw new Error("اسم المستخدم مستخدم بالفعل لمشرف آخر");
+  }
+
+  const record: AdminUserRecord = {
+    id: `adm-${crypto.randomBytes(5).toString("hex")}`,
+    username,
+    displayName: input.displayName.trim() || username,
+    passwordHash: hashPassword(input.password),
+    role: "admin",
+    permissions: normalizePermissions(input.permissions),
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (isD1Configured()) {
+    await queryCloudflareD1(
+      `INSERT INTO admin_users (id, username, display_name, password_hash, role, permissions, is_active, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)`,
+      [
+        record.id,
+        record.username,
+        record.displayName,
+        record.passwordHash,
+        record.role,
+        JSON.stringify(record.permissions),
+        record.createdAt,
+      ]
+    );
+    return toPublicAdminUser(record);
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      db.admins = db.admins || [];
+      if (db.admins.some((a) => a.username.toLowerCase() === username)) {
+        throw new Error("اسم المستخدم مستخدم بالفعل لمشرف آخر");
+      }
+      db.admins.push(record);
+      await writeLocalDb(db);
+      return toPublicAdminUser(record);
+    });
+  }
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("admin_users")
+    .insert({
+      id: record.id,
+      username: record.username,
+      display_name: record.displayName,
+      password_hash: record.passwordHash,
+      role: record.role,
+      permissions: record.permissions,
+      is_active: record.isActive,
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return toPublicAdminUser(mapSupabaseAdmin(data));
+}
+
+export async function updateAdminUser(
+  id: string,
+  input: {
+    displayName?: string;
+    password?: string;
+    permissions?: AdminPermission[];
+    isActive?: boolean;
+  }
+): Promise<AdminUser | null> {
+  if (isD1Configured()) {
+    const existing = await getAdminUserById(id);
+    if (!existing) return null;
+    const displayName =
+      input.displayName !== undefined
+        ? input.displayName.trim() || existing.username
+        : existing.displayName;
+    let passwordHash = existing.passwordHash;
+    if (input.password && input.password.trim()) {
+      if (input.password.length < 6) {
+        throw new Error("كلمة المرور يجب أن تكون 6 خانات على الأقل");
+      }
+      passwordHash = hashPassword(input.password);
+    }
+    const permissions =
+      input.permissions !== undefined && existing.role !== "owner"
+        ? normalizePermissions(input.permissions)
+        : existing.permissions;
+    const isActive =
+      input.isActive !== undefined && existing.role !== "owner"
+        ? Boolean(input.isActive)
+        : existing.isActive;
+
+    await queryCloudflareD1(
+      `UPDATE admin_users SET display_name = ?1, password_hash = ?2, permissions = ?3, is_active = ?4 WHERE id = ?5`,
+      [displayName, passwordHash, JSON.stringify(permissions), isActive ? 1 : 0, id]
+    );
+    return {
+      ...toPublicAdminUser(existing),
+      displayName,
+      permissions,
+      isActive,
+    };
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      db.admins = db.admins || [];
+      const idx = db.admins.findIndex((a) => a.id === id);
+      if (idx === -1) return null;
+
+      const current = db.admins[idx];
+      if (input.displayName !== undefined) {
+        current.displayName = input.displayName.trim() || current.username;
+      }
+      if (input.password && input.password.trim()) {
+        if (input.password.length < 6) {
+          throw new Error("كلمة المرور يجب أن تكون 6 خانات على الأقل");
+        }
+        current.passwordHash = hashPassword(input.password);
+      }
+      if (input.permissions !== undefined && current.role !== "owner") {
+        current.permissions = normalizePermissions(input.permissions);
+      }
+      if (input.isActive !== undefined && current.role !== "owner") {
+        current.isActive = Boolean(input.isActive);
+      }
+      await writeLocalDb(db);
+      return toPublicAdminUser(current);
+    });
+  }
+
+  const supabase = getSupabase();
+  const patch: Record<string, unknown> = {};
+  if (input.displayName !== undefined) patch.display_name = input.displayName.trim();
+  if (input.password && input.password.trim()) {
+    if (input.password.length < 6) {
+      throw new Error("كلمة المرور يجب أن تكون 6 خانات على الأقل");
+    }
+    patch.password_hash = hashPassword(input.password);
+  }
+  if (input.permissions !== undefined) {
+    patch.permissions = normalizePermissions(input.permissions);
+  }
+  if (input.isActive !== undefined) {
+    patch.is_active = Boolean(input.isActive);
+  }
+
+  const { data, error } = await supabase
+    .from("admin_users")
+    .update(patch)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? toPublicAdminUser(mapSupabaseAdmin(data)) : null;
+}
+
+export async function deleteAdminUser(id: string): Promise<boolean> {
+  if (isD1Configured()) {
+    await queryCloudflareD1("DELETE FROM admin_users WHERE id = ?1 AND role != 'owner'", [id]);
+    return true;
+  }
+
+  if (!isSupabaseConfigured()) {
+    return withLocalDbLock(async () => {
+      const db = await readLocalDb();
+      db.admins = db.admins || [];
+      const target = db.admins.find((a) => a.id === id);
+      if (!target || target.role === "owner") return false;
+      db.admins = db.admins.filter((a) => a.id !== id);
+      await writeLocalDb(db);
+      return true;
+    });
+  }
+
+  const supabase = getSupabase();
+  const { error } = await supabase.from("admin_users").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return true;
 }

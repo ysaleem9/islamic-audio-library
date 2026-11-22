@@ -42,6 +42,18 @@ create table if not exists public.lessons (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.admin_users (
+  id text primary key,
+  username text not null unique,
+  display_name text not null,
+  password_hash text not null,
+  role text not null default 'admin' check (role in ('owner', 'admin')),
+  permissions jsonb not null default '[]'::jsonb,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  last_active_at timestamptz
+);
+
 -- فهارس لتسريع البحث والفرز
 create index if not exists idx_lessons_series_id on public.lessons(series_id);
 create index if not exists idx_lessons_category on public.lessons(category);

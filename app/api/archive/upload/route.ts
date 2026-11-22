@@ -1,8 +1,13 @@
 import fs from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/auth";
-import { isArchiveConfigured, uploadAudioToInternetArchive } from "@/lib/archive";
+import { getAdminSession, hasAdminPermission } from "@/lib/auth";
+import {
+  isArchiveConfigured,
+  isR2Configured,
+  uploadAudioToCloudflareR2,
+  uploadAudioToInternetArchive,
+} from "@/lib/archive";
 import { getAllData } from "@/lib/store";
 
 const ALLOWED_EXTENSIONS = [".mp3", ".m4a", ".ogg", ".opus", ".wav", ".aac"];
@@ -12,6 +17,9 @@ export async function POST(request: Request) {
   const session = await getAdminSession();
   if (!session) {
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  }
+  if (!hasAdminPermission(session, "manage_lessons")) {
+    return NextResponse.json({ error: "ليس لديك صلاحية رفع الملفات الصوتية" }, { status: 403 });
   }
 
   try {
@@ -46,6 +54,23 @@ export async function POST(request: Request) {
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    if (isR2Configured()) {
+      const uploaded = await uploadAudioToCloudflareR2({
+        buffer,
+        originalFileName: file.name,
+        mimeType: file.type || "audio/mpeg",
+        folder: identifier || "lessons",
+      });
+
+      return NextResponse.json({
+        storageMode: "r2",
+        audioUrl: uploaded.audioUrl,
+        identifier: uploaded.identifier,
+        fileName: uploaded.fileName,
+        message: "تم رفع الملف الصوتي بنجاح إلى Cloudflare R2!",
+      });
+    }
 
     if (isArchiveConfigured()) {
       const data = await getAllData();

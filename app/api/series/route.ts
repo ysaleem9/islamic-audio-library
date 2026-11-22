@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/auth";
+import { getAdminSession, hasAdminPermission } from "@/lib/auth";
 import { createSeries, getAllData } from "@/lib/store";
 
 export async function GET() {
@@ -11,6 +11,9 @@ export async function POST(request: Request) {
   const session = await getAdminSession();
   if (!session) {
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  }
+  if (!hasAdminPermission(session, "manage_series")) {
+    return NextResponse.json({ error: "ليس لديك صلاحية إدارة السلاسل" }, { status: 403 });
   }
   try {
     const body = await request.json();

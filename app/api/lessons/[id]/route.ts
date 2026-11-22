@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/auth";
+import { getAdminSession, hasAdminPermission } from "@/lib/auth";
 import { deleteLesson, updateLesson } from "@/lib/store";
 
 export async function PUT(
@@ -9,6 +9,9 @@ export async function PUT(
   const session = await getAdminSession();
   if (!session) {
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  }
+  if (!hasAdminPermission(session, "manage_lessons")) {
+    return NextResponse.json({ error: "ليس لديك صلاحية تعديل الدروس" }, { status: 403 });
   }
   try {
     const { id } = await context.params;
@@ -42,6 +45,9 @@ export async function DELETE(
   const session = await getAdminSession();
   if (!session) {
     return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+  }
+  if (!hasAdminPermission(session, "manage_lessons")) {
+    return NextResponse.json({ error: "ليس لديك صلاحية حذف الدروس" }, { status: 403 });
   }
   try {
     const { id } = await context.params;

@@ -16,8 +16,71 @@ export interface ArchiveItemResolution {
 
 const AUDIO_EXTENSIONS = [".mp3", ".m4a", ".ogg", ".opus", ".wav", ".aac"];
 
+export function isR2Configured(): boolean {
+  return Boolean(
+    process.env.CLOUDFLARE_ACCOUNT_ID &&
+      process.env.CLOUDFLARE_API_TOKEN &&
+      process.env.CLOUDFLARE_R2_BUCKET_NAME
+  );
+}
+
 export function isArchiveConfigured(): boolean {
-  return Boolean(process.env.ARCHIVE_ACCESS_KEY && process.env.ARCHIVE_SECRET_KEY);
+  return (
+    isR2Configured() ||
+    Boolean(process.env.ARCHIVE_ACCESS_KEY && process.env.ARCHIVE_SECRET_KEY)
+  );
+}
+
+export async function uploadAudioToCloudflareR2(params: {
+  buffer: Buffer;
+  originalFileName: string;
+  mimeType: string;
+  folder?: string;
+}): Promise<{ audioUrl: string; identifier: string; fileName: string }> {
+  const accountId =
+    process.env.CLOUDFLARE_ACCOUNT_ID || "79403c73437277b14962cde46f2dafe1";
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || "msfatimawebsite";
+  const publicBaseUrl = (
+    process.env.CLOUDFLARE_R2_PUBLIC_URL ||
+    "https://audio.fatimahijazi.com"
+  ).replace(/\/+$/, "");
+
+  if (!apiToken) {
+    throw new Error("مفتاح CLOUDFLARE_API_TOKEN غير مضبوط للرفع المباشر إلى R2.");
+  }
+
+  const cleanFileName = params.originalFileName.replace(/[/\\]/g, "_").trim();
+  const folderPrefix = (params.folder || "lessons").replace(/^\/+|\/+$/g, "");
+  const objectKey = `${folderPrefix}/${Date.now()}-${cleanFileName}`;
+  const encodedKey = objectKey
+    .split("/")
+    .map((seg) => encodeURIComponent(seg))
+    .join("/");
+
+  const uploadUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/r2/buckets/${encodeURIComponent(
+    bucketName
+  )}/objects/${encodedKey}`;
+
+  const res = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": params.mimeType || "audio/mpeg",
+    },
+    body: new Uint8Array(params.buffer),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`فشل الرفع إلى Cloudflare R2 (${res.status}): ${errText.slice(0, 200)}`);
+  }
+
+  return {
+    identifier: bucketName,
+    fileName: objectKey,
+    audioUrl: `${publicBaseUrl}/${encodedKey}`,
+  };
 }
 
 export function extractArchiveIdentifier(urlOrId: string): string | null {
