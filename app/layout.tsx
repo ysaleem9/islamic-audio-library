@@ -4,9 +4,9 @@ import { AudioPlayerProvider } from "@/components/AudioPlayerContext";
 import { AudioPlayerBar } from "@/components/AudioPlayerBar";
 
 export const metadata: Metadata = {
-  title: "مكتبة الداعية فاطمة — دروس دينية ومحاضرات صوتية",
+  title: "الداعية فاطمة حجازي — «أنزله بعلمه» | المنصة العلمية والدعوية",
   description:
-    "الموقع الصوتي للداعية فاطمة لنشر الدروس العلمية والسلاسل المنهجية والمحاضرات الصوتية للاستماع المباشر والتحميل المجاني.",
+    "المنصة العلمية والدعوية للداعية أ. فاطمة حجازي — شروحات تفسير القرآن الكريم، العقيدة، الفقه، الرقائق والتزكية، والتربية الإيمانية للاستماع المباشر والتحميل المجاني.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

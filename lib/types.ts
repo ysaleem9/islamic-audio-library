@@ -10,7 +10,16 @@ export interface SiteSettings {
 }
 
 export type SeriesStatus = "ongoing" | "completed";
-export type CoverAccent = "emerald" | "gold" | "teal" | "slate";
+export type CoverAccent =
+  | "purple"
+  | "rose"
+  | "plum"
+  | "blush"
+  | "sage"
+  | "emerald"
+  | "gold"
+  | "teal"
+  | "slate";
 
 export interface Series {
   id: string;
@@ -104,12 +113,10 @@ export interface DatabasePayload {
 }
 
 export const DEFAULT_CATEGORIES = [
-  "عقيدة",
-  "تفسير",
-  "فقه",
-  "حديث",
-  "سيرة",
-  "رقائق وتزكية",
-  "الأسرة والتربية",
-  "فوائد ومحاضرات",
+  "تفسير القرآن الكريم",
+  "العقيدة",
+  "الفقه",
+  "الرقائق والتزكية",
+  "التربية الإيمانية",
+  "الدروس والمحاضرات",
 ] as const;

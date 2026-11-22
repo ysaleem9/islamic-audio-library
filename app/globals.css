@@ -3,49 +3,67 @@
 :root {
   --font-amiri: "Amiri", Georgia, serif;
   --font-ibm-arabic: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
-  --bg-parchment: #faf3f6;
-  --bg-card: #ffffff;
-  --border-sand: #ebc6dd;
-  --emerald-deep: #8e3a7a;
-  --emerald-dark: #6f2b5f;
-  --emerald-soft: #f6eaf1;
-  --gold-accent: #b8559b;
-  --gold-soft: #faf3f6;
-  --ink-primary: #2d1626;
-  --ink-muted: #6e4e65;
+
+  /* Natural Purple, Pink & Botanical Sage Palette (الهوية البصرية المتكاملة) */
+  --color-primary-dark: #8E3A7A;   /* البنفسجي الداكن: العناوين والعناصر القيادية */
+  --color-accent-pink: #B8559B;    /* الزهري البنفسجي: الأزرار والتفاعلات والـ CTAs */
+  --color-medium-pink: #D68FBF;    /* الزهري المتوسط: التفاصيل والحدود الناعمة */
+  --color-light-pink: #EBC6DD;     /* الزهري الفاتح: خلفيات البطاقات والتدرجات */
+  --color-bg-main: #FAF3F6;        /* الأبيض الزهري: الخلفية الرئيسية للمنصة */
+
+  /* Botanical Natural Green (درجات الأخضر الطبيعي الهادئ) */
+  --color-sage-green: #3D6B52;     /* الأخضر الزيتوني/المريمي: وسوم القرآن وحالات الإنجاز */
+  --color-sage-soft: #EBF4EE;      /* الأخضر الفاتح الهادئ: خلفيات الوسوم الإيمانية */
+
+  /* Text & Ink Tokens */
+  --ink-primary: #2B1626;          /* لون النص الأساسي المقروء والمريح */
+  --ink-secondary: #5C3D55;        /* نصوص الشروحات والأوصاف */
+  --ink-muted: #82607A;            /* النصوص الخفيفة وتواريخ الإضافة */
+
+  /* Surfaces & Borders */
+  --surface-card: #FFFFFF;
+  --surface-card-subtle: #FCF7F9;
+  --border-soft: #EAD5E1;
+  --border-focus: #B8559B;
 }
 
 @layer base {
   html {
     direction: rtl;
     scroll-behavior: smooth;
+    background-color: var(--color-bg-main);
   }
 
   body {
-    background-color: var(--bg-parchment);
+    background-color: var(--color-bg-main);
     color: var(--ink-primary);
     font-family: var(--font-ibm-arabic), "Segoe UI", Tahoma, sans-serif;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   h1,
   h2,
   h3,
+  h4,
   .font-serif-arabic {
     font-family: var(--font-amiri), Georgia, serif;
   }
 }
 
-/* Subtle Islamic geometric pattern for hero and series headers */
-.islamic-pattern {
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23ffffff' stroke-opacity='0.08' stroke-width='1'%3E%3Cpath d='M30 0 L37.5 22.5 L60 30 L37.5 37.5 L30 60 L22.5 37.5 L0 30 L22.5 22.5 Z'/%3E%3Ccircle cx='30' cy='30' r='8'/%3E%3C/g%3E%3C/svg%3E");
+/* خلفيات انسيابية ناعمة مستوحاة من الطبيعة والسكينة */
+.floral-ambient-bg {
+  background-image:
+    radial-gradient(at 0% 0%, rgba(235, 198, 221, 0.4) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(61, 107, 82, 0.12) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(250, 243, 246, 0.85) 0px, transparent 100%);
 }
 
-.islamic-pattern-dark {
-  background-image: url("data:image/svg+xml,%3Csvg width='48' height='48' viewBox='0 0 48 48' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%238e3a7a' stroke-opacity='0.06' stroke-width='1'%3E%3Cpath d='M24 0 L30 18 L48 24 L30 30 L24 48 L18 30 L0 24 L18 18 Z'/%3E%3C/g%3E%3C/svg%3E");
+.organic-lines-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%238E3A7A' stroke-opacity='0.035' stroke-width='1'%3E%3Cpath d='M0 40 Q 20 20, 40 40 T 80 40' /%3E%3Cpath d='M40 0 Q 60 20, 40 40 T 40 80' /%3E%3Ccircle cx='40' cy='40' r='12' /%3E%3C/g%3E%3C/svg%3E");
 }
 
-/* Custom audio range input */
+/* Custom Audio Range Input */
 input[type="range"].audio-range {
   -webkit-appearance: none;
   appearance: none;
@@ -64,76 +82,14 @@ input[type="range"].audio-range::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #8e3a7a;
+  background: #8E3A7A;
   border: 2px solid #ffffff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 4px rgba(142, 58, 122, 0.35);
   margin-top: -4px;
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, background-color 0.15s ease;
 }
 
 input[type="range"].audio-range:hover::-webkit-slider-thumb {
-  transform: scale(1.18);
-}
-
-/* Modern word-by-word kinetic typography & hero quote animations */
-@keyframes word-kinetic-in {
-  0% {
-    opacity: 0;
-    transform: translateY(16px) scale(0.94);
-    filter: blur(8px);
-  }
-  60% {
-    opacity: 1;
-    filter: blur(0px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0px);
-  }
-}
-
-@keyframes border-aurora-spin {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-@keyframes subtle-float-orb {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(-16px, 12px, 0) scale(1.1);
-  }
-}
-
-.kinetic-word {
-  display: inline-block;
-  opacity: 0;
-  will-change: transform, opacity, filter;
-  animation: word-kinetic-in 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.quote-aurora-border {
-  background: linear-gradient(
-    120deg,
-    rgba(250, 243, 246, 0.25),
-    rgba(235, 198, 221, 0.75),
-    rgba(214, 143, 191, 0.35),
-    rgba(250, 243, 246, 0.65)
-  );
-  background-size: 300% 300%;
-  animation: border-aurora-spin 8s ease infinite;
-}
-
-.animate-orb-float {
-  animation: subtle-float-orb 9s ease-in-out infinite;
+  transform: scale(1.2);
+  background: #B8559B;
 }

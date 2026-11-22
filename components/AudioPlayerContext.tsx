@@ -18,6 +18,8 @@ interface AudioPlayerContextValue {
   currentTime: number;
   duration: number;
   playbackRate: number;
+  volume: number;
+  isMuted: boolean;
   sleepMinutesLeft: number | null;
   progressMap: Record<string, ProgressEntry>;
   playLesson: (lesson: Lesson, nextQueue?: Lesson[]) => void;
@@ -27,6 +29,8 @@ interface AudioPlayerContextValue {
   playNext: () => void;
   playPrevious: () => void;
   setPlaybackRate: (rate: number) => void;
+  setVolume: (vol: number) => void;
+  toggleMute: () => void;
   setSleepTimer: (minutes: number | null) => void;
   closePlayer: () => void;
   hasNext: boolean;
@@ -34,6 +38,7 @@ interface AudioPlayerContextValue {
 }
 
 const PROGRESS_STORAGE_KEY = "islamic_audio_progress_v1";
+const VOLUME_STORAGE_KEY = "islamic_audio_volume_v1";
 
 const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null);
 
@@ -49,16 +54,26 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRateState] = useState(1);
+  const [volume, setVolumeState] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
   const [sleepEndsAt, setSleepEndsAt] = useState<number | null>(null);
   const [sleepMinutesLeft, setSleepMinutesLeft] = useState<number | null>(null);
   const [progressMap, setProgressMap] = useState<Record<string, ProgressEntry>>({});
 
-  // Load saved listening progress from localStorage
+  // Load saved progress and volume from localStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(PROGRESS_STORAGE_KEY);
       if (raw) {
         setProgressMap(JSON.parse(raw) as Record<string, ProgressEntry>);
+      }
+      const savedVol = localStorage.getItem(VOLUME_STORAGE_KEY);
+      if (savedVol !== null) {
+        const v = parseFloat(savedVol);
+        if (!isNaN(v) && v >= 0 && v <= 1) {
+          setVolumeState(v);
+          if (audioRef.current) audioRef.current.volume = v;
+        }
       }
     } catch {
       // Ignore storage errors
@@ -115,6 +130,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
 
       audio.src = lesson.audioUrl;
       audio.playbackRate = playbackRate;
+      audio.volume = isMuted ? 0 : volume;
       audio.load();
 
       // Resume from saved position if previously paused mid-way
@@ -143,7 +159,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
         fetch(`/api/lessons/${encodeURIComponent(lesson.id)}/play`, { method: "POST" }).catch(() => {});
       }
     },
-    [currentLesson?.id, playbackRate, progressMap]
+    [currentLesson?.id, isMuted, playbackRate, progressMap, volume]
   );
 
   const togglePlay = useCallback(() => {
@@ -190,6 +206,30 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       audioRef.current.playbackRate = rate;
     }
   }, []);
+
+  const setVolume = useCallback((vol: number) => {
+    const clamped = Math.max(0, Math.min(1, vol));
+    setVolumeState(clamped);
+    setIsMuted(clamped === 0);
+    if (audioRef.current) {
+      audioRef.current.volume = clamped;
+    }
+    try {
+      localStorage.setItem(VOLUME_STORAGE_KEY, String(clamped));
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted((prev) => {
+      const next = !prev;
+      if (audioRef.current) {
+        audioRef.current.volume = next ? 0 : volume;
+      }
+      return next;
+    });
+  }, [volume]);
 
   const setSleepTimer = useCallback((minutes: number | null) => {
     if (!minutes) {
@@ -313,6 +353,8 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
         currentTime,
         duration,
         playbackRate,
+        volume,
+        isMuted,
         sleepMinutesLeft,
         progressMap,
         playLesson,
@@ -322,6 +364,8 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
         playNext,
         playPrevious,
         setPlaybackRate,
+        setVolume,
+        toggleMute,
         setSleepTimer,
         closePlayer,
         hasNext,

@@ -2,7 +2,16 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { Check, CheckCircle2, Clock, Download, Headphones, Pause, Play, Share2 } from "lucide-react";
+import {
+  Check,
+  CheckCircle2,
+  Clock,
+  Download,
+  Headphones,
+  Pause,
+  Play,
+  Share2,
+} from "lucide-react";
 import type { Lesson, Series } from "@/lib/types";
 import { useAudioPlayer } from "./AudioPlayerContext";
 import { formatArabicDate, formatDuration } from "@/lib/format";
@@ -33,16 +42,19 @@ export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRow
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback ignored
+      // Fallback
     }
   };
+
+  // Check if category is related to Quran/Tafsir to use the soft botanical green badge
+  const isQuranCategory = lesson.category.includes("تفسير") || lesson.category.includes("قرآن");
 
   return (
     <article
       className={`group rounded-2xl border p-4 sm:p-5 transition-all ${
         isCurrent
-          ? "border-[#8E3A7A] bg-[#FAF3F6] shadow-sm"
-          : "border-[#EBC6DD] bg-white hover:border-[#D68FBF] hover:shadow-sm"
+          ? "border-[#8E3A7A] bg-[#FCF7F9] shadow-[0_4px_20px_rgba(142,58,122,0.08)]"
+          : "border-[#EAD5E1] bg-white hover:border-[#8E3A7A]/60 hover:shadow-sm"
       }`}
     >
       <div className="flex items-start gap-3.5 sm:gap-4">
@@ -51,14 +63,14 @@ export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRow
           type="button"
           onClick={() => playLesson(lesson, queue)}
           aria-label={isThisPlaying ? "إيقاف الدرس" : "تشغيل الدرس"}
-          className={`shrink-0 mt-0.5 w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-sm ${
+          className={`shrink-0 mt-0.5 w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-xs cursor-pointer ${
             isCurrent
               ? "bg-[#8E3A7A] text-white"
-              : "bg-[#FAF3F6] text-[#8E3A7A] border border-[#EBC6DD] group-hover:bg-[#8E3A7A] group-hover:text-white group-hover:border-[#8E3A7A]"
+              : "bg-[#FAF3F6] border border-[#EBC6DD] text-[#8E3A7A] group-hover:bg-[#B8559B] group-hover:border-[#B8559B] group-hover:text-white"
           }`}
         >
           {isThisPlaying ? (
-            <Pause className="w-5 h-5" />
+            <Pause className="w-5 h-5 fill-current" />
           ) : (
             <Play className="w-5 h-5 fill-current mr-[-2px]" />
           )}
@@ -68,23 +80,29 @@ export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRow
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 text-xs mb-1.5">
             {showEpisodeBadge && lesson.episodeNumber != null && (
-              <span className="px-2 py-0.5 rounded-md bg-[#8E3A7A] text-white font-semibold">
+              <span className="px-2 py-0.5 rounded-lg bg-[#8E3A7A] text-white font-semibold">
                 درس {lesson.episodeNumber}
               </span>
             )}
-            <span className="px-2.5 py-0.5 rounded-full bg-[#EBC6DD]/45 text-[#8E3A7A] font-medium">
+            <span
+              className={`px-2.5 py-0.5 rounded-full font-medium border ${
+                isQuranCategory
+                  ? "bg-[#EBF4EE] text-[#3D6B52] border-[#3D6B52]/20"
+                  : "bg-[#FAF3F6] text-[#8E3A7A] border-[#EBC6DD]"
+              }`}
+            >
               {lesson.category}
             </span>
             {series && (
               <Link
                 href={`/series/${series.slug}`}
-                className="text-[#8E3A7A] hover:underline font-medium truncate max-w-[220px]"
+                className="text-[#6E4E65] hover:text-[#8E3A7A] font-medium truncate max-w-[220px]"
               >
                 سلسلة: {series.title}
               </Link>
             )}
             {progress?.completed && (
-              <span className="inline-flex items-center gap-1 text-[#8E3A7A] font-medium">
+              <span className="inline-flex items-center gap-1 text-[#3D6B52] font-semibold text-[11px] bg-[#EBF4EE] px-2 py-0.5 rounded-md">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 تم الاستماع
               </span>
@@ -93,63 +111,80 @@ export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRow
 
           <Link
             href={`/lessons/${lesson.id}`}
-            className="block font-serif-arabic text-lg sm:text-xl font-bold text-[#2D1626] hover:text-[#8E3A7A] leading-snug transition-colors"
+            className="block font-serif-arabic text-lg sm:text-xl font-bold text-[#2B1626] hover:text-[#8E3A7A] leading-snug transition-colors"
           >
             {lesson.title}
           </Link>
 
           {lesson.description && (
-            <p className="text-sm text-[#6E4E65] mt-1.5 line-clamp-2 leading-relaxed">
+            <p className="mt-1.5 text-xs sm:text-sm text-[#5C3D55] line-clamp-2 leading-relaxed">
               {lesson.description}
             </p>
           )}
 
-          {/* Partial listening progress bar */}
-          {pct > 2 && !progress?.completed && (
-            <div className="mt-2.5 flex items-center gap-2">
-              <div className="h-1.5 flex-1 max-w-44 rounded-full bg-[#EBC6DD] overflow-hidden">
-                <div className="h-full bg-[#B8559B] rounded-full" style={{ width: `${pct}%` }} />
+          {/* Progress bar if listened to partially */}
+          {pct > 0 && !progress?.completed && (
+            <div className="mt-2.5 max-w-xs">
+              <div className="h-1.5 rounded-full bg-[#EAD5E1] overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-l from-[#8E3A7A] to-[#B8559B] rounded-full transition-all"
+                  style={{ width: `${pct}%` }}
+                />
               </div>
-              <span className="text-[11px] text-[#8E3A7A]">استكمال ({pct}%)</span>
+              <div className="mt-0.5 text-[10px] text-[#6E4E65]">
+                توقفت عند {pct}% من الدرس
+              </div>
             </div>
           )}
 
-          {/* Meta & actions */}
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-[#FAF3F6]">
-            <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs text-[#6E4E65]">
-              {lesson.durationSeconds > 0 && (
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-[#B8559B]" />
-                  {formatDuration(lesson.durationSeconds)}
+          {/* Meta footer: Duration, Date, Actions */}
+          <div className="mt-3 pt-2.5 border-t border-[#FAF3F6] flex flex-wrap items-center justify-between gap-3 text-xs text-[#6E4E65]">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-[#D68FBF]" />
+                {formatDuration(lesson.durationSeconds)}
+              </span>
+              {lesson.publishedAt && (
+                <span className="hidden sm:inline">
+                  {formatArabicDate(lesson.publishedAt)}
                 </span>
               )}
-              {lesson.publishedAt && <span>{formatArabicDate(lesson.publishedAt)}</span>}
-              <span className="inline-flex items-center gap-1">
-                <Headphones className="w-3.5 h-3.5" />
-                {lesson.playsCount.toLocaleString("ar-EG")} استماع
-              </span>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            {/* Actions: Download + Share */}
+            <div className="flex items-center gap-1">
+              {lesson.audioUrl && (
+                <a
+                  href={lesson.audioUrl}
+                  download
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[#6E4E65] hover:text-[#8E3A7A] hover:bg-[#FAF3F6] transition-colors"
+                  title="تحميل مباشر بصيغة MP3"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#B8559B]" />
+                  <span>تحميل</span>
+                </a>
+              )}
+
               <button
                 type="button"
                 onClick={handleShare}
-                title="نسخ رابط الدرس"
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-[#EBC6DD] text-[#6E4E65] hover:text-[#8E3A7A] hover:border-[#8E3A7A] transition-colors"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[#6E4E65] hover:text-[#8E3A7A] hover:bg-[#FAF3F6] transition-colors cursor-pointer"
+                title="مشاركة رابط الدرس"
               >
-                {copied ? <Check className="w-3.5 h-3.5 text-[#8E3A7A]" /> : <Share2 className="w-3.5 h-3.5" />}
-                <span>{copied ? "تم النسخ" : "مشاركة"}</span>
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-[#8E3A7A]" />
+                    <span className="text-[#8E3A7A]">تم النسخ</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-3.5 h-3.5 text-[#B8559B]" />
+                    <span>مشاركة</span>
+                  </>
+                )}
               </button>
-              <a
-                href={lesson.audioUrl}
-                download
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-[#EBC6DD] bg-[#FAF3F6] text-[#8E3A7A] hover:bg-[#EBC6DD]/50 font-medium transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>تحميل</span>
-              </a>
             </div>
           </div>
         </div>
