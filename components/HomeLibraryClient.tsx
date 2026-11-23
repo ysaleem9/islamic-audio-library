@@ -17,14 +17,19 @@ import {
   Heart,
   Feather,
   Compass,
+  FolderOpen,
   X,
 } from "lucide-react";
 import type { DatabasePayload, Series } from "@/lib/types";
 import { useAudioPlayer } from "./AudioPlayerContext";
 import { LessonRow } from "./LessonRow";
 import { formatTotalDurationArabic } from "@/lib/format";
-import { arabicIncludes } from "@/lib/arabic";
-import { LogoAnzalahu } from "./LogoAnzalahu";
+import { arabicMatchesFields } from "@/lib/arabic";
+import {
+  getDirectChildSeries,
+  getRecursiveSeriesStats,
+  getSeriesPathLabel,
+} from "@/lib/seriesTree";
 
 const ACCENT_STYLES: Record<string, { bar: string; badge: string; iconBg: string }> = {
   purple: {
@@ -48,13 +53,13 @@ const ACCENT_STYLES: Record<string, { bar: string; badge: string; iconBg: string
     iconBg: "bg-[#D68FBF]/20 text-[#8E3A7A]",
   },
   sage: {
-    bar: "from-[#3D6B52] to-[#558B6E]",
-    badge: "bg-[#EBF4EE] text-[#3D6B52] border border-[#3D6B52]/20",
+    bar: "from-[#2E5741] to-[#558B6E]",
+    badge: "bg-[#EBF4EE] text-[#2E5741] border border-[#C8DFCF]",
     iconBg: "bg-[#3D6B52]/10 text-[#3D6B52]",
   },
   emerald: {
-    bar: "from-[#3D6B52] to-[#8E3A7A]",
-    badge: "bg-[#EBF4EE] text-[#3D6B52] border border-[#3D6B52]/20",
+    bar: "from-[#3D6B52] via-[#6F7C6F] to-[#8E3A7A]",
+    badge: "bg-[#EBF4EE] text-[#2E5741] border border-[#C8DFCF]",
     iconBg: "bg-[#3D6B52]/10 text-[#3D6B52]",
   },
   gold: {
@@ -64,7 +69,7 @@ const ACCENT_STYLES: Record<string, { bar: string; badge: string; iconBg: string
   },
   teal: {
     bar: "from-[#3D6B52] to-[#8E3A7A]",
-    badge: "bg-[#EBF4EE] text-[#3D6B52] border border-[#3D6B52]/20",
+    badge: "bg-[#EBF4EE] text-[#2E5741] border border-[#C8DFCF]",
     iconBg: "bg-[#3D6B52]/10 text-[#3D6B52]",
   },
   slate: {
@@ -74,20 +79,17 @@ const ACCENT_STYLES: Record<string, { bar: string; badge: string; iconBg: string
   },
 };
 
-// Metadata for categories with icons and descriptions
 const CATEGORY_META: Record<
   string,
-  { icon: React.ElementType; description: string; badgeColor?: string }
+  { icon: React.ElementType; description: string }
 > = {
   "تفسير القرآن الكريم": {
     icon: BookOpen,
     description: "تأملات وتدبرات في آيات الذكر الحكيم وقصصه العظيمة",
-    badgeColor: "text-[#3D6B52] bg-[#EBF4EE]",
   },
   تفسير: {
     icon: BookOpen,
     description: "تأملات وتدبرات في آيات الذكر الحكيم وقصصه العظيمة",
-    badgeColor: "text-[#3D6B52] bg-[#EBF4EE]",
   },
   العقيدة: {
     icon: Compass,
@@ -131,7 +133,6 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
     return m;
   }, [data.series]);
 
-  // Dynamic set of unique categories
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
     data.series.forEach((s) => set.add(s.category));
@@ -156,20 +157,21 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
     [data.lessons]
   );
 
-  // Normalized search across lessons & series
   const filteredSeries = useMemo(() => {
+    const isSearching = Boolean(searchQuery.trim());
     return data.series.filter((s) => {
+      // On the main homepage grid, show top-level (root) series unless the user is actively searching
+      const hasValidParent = Boolean(s.parentId && seriesMap.has(s.parentId));
+      if (!isSearching && hasValidParent) return false;
+
       const catOk = selectedCategory === "الكل" || s.category === selectedCategory;
       if (!catOk) return false;
-      if (!searchQuery.trim()) return true;
+      if (!isSearching) return true;
 
-      return (
-        arabicIncludes(s.title, searchQuery) ||
-        arabicIncludes(s.description, searchQuery) ||
-        arabicIncludes(s.category, searchQuery)
-      );
+      const fullPath = getSeriesPathLabel(data.series, s.id);
+      return arabicMatchesFields([s.title, s.description, s.category, fullPath], searchQuery);
     });
-  }, [data.series, searchQuery, selectedCategory]);
+  }, [data.series, searchQuery, selectedCategory, seriesMap]);
 
   const filteredLessons = useMemo(() => {
     return data.lessons.filter((l) => {
@@ -178,118 +180,366 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
       if (!catOk) return false;
       if (!searchQuery.trim()) return true;
 
-      const series = l.seriesId ? seriesMap.get(l.seriesId) : null;
-      return (
-        arabicIncludes(l.title, searchQuery) ||
-        arabicIncludes(l.description, searchQuery) ||
-        arabicIncludes(l.notes, searchQuery) ||
-        arabicIncludes(l.category, searchQuery) ||
-        (series && arabicIncludes(series.title, searchQuery))
+      const seriesPath = l.seriesId ? getSeriesPathLabel(data.series, l.seriesId) : "";
+      return arabicMatchesFields(
+        [l.title, l.description, l.notes, l.category, seriesPath],
+        searchQuery
       );
     });
-  }, [data.lessons, lessonTab, searchQuery, selectedCategory, seriesMap]);
+  }, [data.lessons, data.series, lessonTab, searchQuery, selectedCategory]);
+
+  // Instant search results right beneath the search box (ignores lessonTab/category filter so user always finds what they type)
+  const instantSearchResults = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return null;
+
+    const matchedSeries = data.series.filter((s) => {
+      const fullPath = getSeriesPathLabel(data.series, s.id);
+      return arabicMatchesFields([s.title, s.description, s.category, fullPath], q);
+    });
+
+    const matchedLessons = data.lessons.filter((l) => {
+      const seriesPath = l.seriesId ? getSeriesPathLabel(data.series, l.seriesId) : "";
+      return arabicMatchesFields([l.title, l.description, l.notes, l.category, seriesPath], q);
+    });
+
+    return {
+      series: matchedSeries,
+      lessons: matchedLessons,
+      total: matchedSeries.length + matchedLessons.length,
+    };
+  }, [data.series, data.lessons, searchQuery]);
 
   const latestLesson = data.lessons[0] || null;
 
   return (
-    <main className="flex-1 pb-16">
-      {/* 2. Hero Section – القسم الرئيسي */}
+    <main className="flex-1 pb-20">
+      {/* ================================================================= */}
+      {/* 1. HERO SECTION – الواجهة الافتتاحية الموحدة والهادئة               */}
+      {/* ================================================================= */}
       <section
         id="hero"
-        className="relative overflow-hidden bg-gradient-to-b from-[#FAF3F6] via-white to-[#FAF3F6] border-b border-[#EAD5E1]"
+        className="relative overflow-hidden bg-gradient-to-b from-[#FAF3F6] via-[#FFFFFF] to-[#F6FAF7] border-b border-[#EAD5E1]/80"
       >
-        {/* Soft floral/ambient background glow */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-[#EBC6DD]/40 rounded-full blur-3xl -z-10 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-[#3D6B52]/10 rounded-full blur-3xl -z-10 pointer-events-none" />
-        <div className="absolute inset-0 organic-lines-pattern pointer-events-none opacity-40" />
+        {/* Ambient soft botanical & rose atmospheric glow */}
+        <div
+          aria-hidden="true"
+          className="absolute -top-28 -right-24 w-[28rem] h-[28rem] rounded-full bg-[#EBC6DD]/45 blur-3xl pointer-events-none"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -bottom-24 -left-24 w-[26rem] h-[26rem] rounded-full bg-[#3D6B52]/12 blur-3xl pointer-events-none"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[38rem] h-[20rem] rounded-full bg-[#FAF3F6]/80 blur-3xl pointer-events-none"
+        />
 
-        <div className="max-w-6xl mx-auto px-4 py-16 sm:py-24 relative z-10">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-12">
-            {/* Right text column */}
-            <div className="flex-1 max-w-2xl text-center lg:text-right">
-              {/* Badge: Slogan "أنزله بعلمه" */}
-              <div className="inline-block mb-4">
-                <LogoAnzalahu variant="hero" />
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-12 pb-14 sm:pt-16 sm:pb-20 relative z-10">
+          {/* Centered Editorial Opening */}
+          <div className="max-w-4xl mx-auto text-center">
+            {/* Botanical Green Eyebrow Pill */}
+            <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#EBF4EE]/90 border border-[#C8DFCF] text-[#2E5741] text-xs sm:text-sm font-semibold shadow-[0_2px_12px_rgba(61,107,82,0.06)]">
+              <span className="font-serif-arabic text-base leading-none text-[#3D6B52]">
+                ۝
+              </span>
+              <span>في رِحابِ القُرآن</span>
+              <span className="w-1 h-1 rounded-full bg-[#8E3A7A]/50" />
+              <span className="text-[#8E3A7A]">المنصة العلمية والدعوية</span>
+            </div>
+
+            {/* PRIMARY FOCAL STATEMENT: Fatima Hijazi's Quote — First thing the eye sees */}
+            <div className="mt-7 sm:mt-9 relative">
+              {/* Subtle top botanical-rose hairline */}
+              <div className="mx-auto mb-6 flex items-center justify-center gap-2">
+                <span className="h-px w-12 bg-gradient-to-l from-[#D68FBF] to-transparent" />
+                <span className="w-2 h-2 rounded-full bg-[#3D6B52]/70" />
+                <span className="h-px w-12 bg-gradient-to-r from-[#D68FBF] to-transparent" />
               </div>
 
-              {/* Main Headline */}
-              <h1 className="font-serif-arabic text-3xl sm:text-5xl lg:text-6xl font-bold leading-tight text-[#2B1626] tracking-tight">
-                في رِحابِ القُرآن
+              <h1 className="font-serif-arabic text-2xl sm:text-[2rem] lg:text-[2.35rem] font-bold text-[#2B1626] leading-[1.95] sm:leading-[1.9] tracking-tight">
+                «ما طابت الحياةُ إلا بالعيش{" "}
+                <span className="text-[#8E3A7A]">في رحابِ القرآن</span>، ولا
+                استقامت الخطى إلا بالسعي لأجلِه في كلّ ميدان؛ ففي قُربِه{" "}
+                <span className="text-[#2E5741]">سكينةٌ تُرمِّمُ شتاتَ الروح</span>
+                ، وفي صُحبتِه أنسٌ يَشفي الجروح. هنا نُصاحب الآيةَ تأمُّلاً
+                وعملاً، ليبقى أثرُها في القلبِ حيّاً لا يزول.»
               </h1>
 
-              {/* Lecturer name */}
-              <div className="mt-3 flex items-center justify-center lg:justify-start gap-3">
-                <span className="font-serif-arabic text-xl sm:text-2xl font-bold text-[#8E3A7A]">
-                  أ. فاطمة حجازي
+              {/* Signature & Role */}
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                <span className="h-px w-8 bg-gradient-to-l from-[#8E3A7A]/60 to-transparent hidden sm:inline-block" />
+                <span className="font-serif-arabic text-lg sm:text-xl font-bold text-[#8E3A7A]">
+                  الأستاذة فاطمة حجازي
                 </span>
-                <span className="h-4 w-[1px] bg-[#D68FBF]" />
+                <span className="text-[#D68FBF]">•</span>
                 <span className="text-xs sm:text-sm text-[#5C3D55] font-medium">
-                  {data.settings.sheikhTitle || "دروس علمية وشروحات منهجية"}
+                  {data.settings.sheikhTitle || "الدروس العلمية والشروحات المنهجية"}
                 </span>
-              </div>
-
-              {/* Spiritual welcoming text */}
-              <p className="mt-5 text-base sm:text-lg text-[#5C3D55] leading-relaxed">
-                مرحباً بكم في المنصة العلمية والدعوية المباركة. شروحات منهجية وتأملات إيمانية
-                مستوحاة من كتاب الله وسنة رسوله ﷺ، تُعين المسلم والمسلمة على طلب العلم ونقاء السريرة
-                والثبات في زمن الفتن.
-              </p>
-
-              {/* Action Buttons */}
-              <div className="mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-3.5">
-                {latestLesson && (
-                  <button
-                    type="button"
-                    onClick={() => playLesson(latestLesson, data.lessons)}
-                    className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-gradient-to-r from-[#8E3A7A] to-[#B8559B] hover:opacity-95 text-white font-semibold shadow-[0_4px_20px_rgba(184,85,155,0.35)] transition-all cursor-pointer transform hover:-translate-y-0.5"
-                  >
-                    <Play className="w-4 h-4 fill-current mr-[-2px]" />
-                    <span>استمع لأحدث درس</span>
-                  </button>
-                )}
-
-                <a
-                  href="#series"
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white border border-[#EAD5E1] hover:border-[#8E3A7A] text-[#8E3A7A] hover:bg-[#FAF3F6] font-semibold transition-all shadow-xs"
-                >
-                  <BookOpen className="w-4 h-4 text-[#3D6B52]" />
-                  <span>استعراض السلاسل العلمية</span>
-                </a>
-
-                <a
-                  href="#lessons"
-                  className="inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl text-[#5C3D55] hover:text-[#8E3A7A] hover:bg-[#EBC6DD]/30 text-sm font-medium transition-colors"
-                >
-                  <Headphones className="w-4 h-4 text-[#B8559B]" />
-                  <span>جميع المحاضرات</span>
-                </a>
+                <span className="h-px w-8 bg-gradient-to-r from-[#3D6B52]/50 to-transparent hidden sm:inline-block" />
               </div>
             </div>
 
-            {/* Left Column: Visual Quranic Emblem */}
-            <div className="shrink-0 flex flex-col items-center">
-              <div className="relative">
-                {/* Glow ring */}
-                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#8E3A7A]/20 via-[#EBC6DD] to-[#3D6B52]/20 blur-2xl -z-10" />
+            {/* Action Buttons (3-Tier System: Primary Purple, Outline Botanical Green, Secondary Blush) */}
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+              {latestLesson && (
+                <button
+                  type="button"
+                  onClick={() => playLesson(latestLesson, data.lessons)}
+                  className="inline-flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-2xl bg-[#8E3A7A] hover:bg-[#752D64] text-white font-semibold shadow-[0_8px_24px_rgba(142,58,122,0.28)] transition-all cursor-pointer transform hover:-translate-y-0.5"
+                >
+                  <Play className="w-4 h-4 fill-current mr-[-2px]" />
+                  <span>استمع لأحدث درس</span>
+                </button>
+              )}
 
-                {/* Emblem Frame */}
-                <div className="w-64 sm:w-76 p-6 sm:p-7 rounded-3xl bg-white/90 backdrop-blur-md border border-[#EAD5E1] shadow-[0_12px_40px_rgba(142,58,122,0.08)] flex flex-col items-center text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#FAF3F6] to-[#EBF4EE] border border-[#3D6B52]/30 flex items-center justify-center mb-4">
-                    <span className="font-serif-arabic text-2xl font-bold text-[#3D6B52]">
-                      ۝
+              <a
+                href="#series"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white border border-[#C8DFCF] hover:border-[#3D6B52] text-[#2E5741] hover:bg-[#EBF4EE]/70 font-semibold transition-all shadow-xs"
+              >
+                <BookOpen className="w-4 h-4 text-[#3D6B52]" />
+                <span>استعراض السلاسل العلمية</span>
+              </a>
+
+              <a
+                href="#lessons"
+                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#EBC6DD]/45 hover:bg-[#EBC6DD]/75 text-[#8E3A7A] font-semibold transition-all"
+              >
+                <Headphones className="w-4 h-4 text-[#B8559B]" />
+                <span>جميع الدروس والمحاضرات</span>
+              </a>
+            </div>
+          </div>
+
+          {/* ================================================================= */}
+          {/* Integrated Search & Live Library Stats Strip                      */}
+          {/* ================================================================= */}
+          <div className="mt-12 sm:mt-14 max-w-4xl mx-auto">
+            <div className="rounded-3xl bg-white/95 backdrop-blur-md border border-[#EAD5E1] shadow-[0_12px_40px_rgba(142,58,122,0.06)] p-4 sm:p-5">
+              {/* Search Bar */}
+              <div className="relative flex items-center rounded-2xl bg-[#FAF3F6]/70 border border-[#EAD5E1] focus-within:bg-white focus-within:border-[#8E3A7A] focus-within:ring-2 focus-within:ring-[#8E3A7A]/15 transition-all">
+                <div className="pr-4 text-[#8E3A7A]">
+                  <Search className="w-5 h-5" />
+                </div>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setSearchQuery("");
+                  }}
+                  placeholder="ابحث عن درس، سورة، سلسلة علمية، أو موضوع (مثال: سورة البقرة، مقدسيات 15، يوسف)..."
+                  className="w-full py-3.5 pr-3 pl-12 bg-transparent text-sm sm:text-base text-[#2B1626] placeholder:text-[#82607A] focus:outline-none"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute left-3.5 p-1.5 rounded-full hover:bg-[#EBC6DD]/40 text-[#8E3A7A] cursor-pointer"
+                    aria-label="مسح البحث"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Instant Live Search Results Panel right beneath the search box */}
+              {instantSearchResults && (
+                <div className="mt-3 rounded-2xl border border-[#D68FBF]/70 bg-white shadow-[0_14px_40px_rgba(142,58,122,0.12)] overflow-hidden text-right">
+                  {/* Results Summary Header */}
+                  <div className="px-4 py-2.5 bg-gradient-to-l from-[#FAF3F6] to-[#F6FAF7] border-b border-[#EAD5E1] flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="text-[#2B1626] font-medium">
+                      نتائج البحث الفوري عن «<strong className="text-[#8E3A7A]">{searchQuery.trim()}</strong>»:{" "}
+                      <strong className="text-[#2E5741]">{instantSearchResults.series.length}</strong>{" "}
+                      سلسلة/سورة و{" "}
+                      <strong className="text-[#8E3A7A]">{instantSearchResults.lessons.length}</strong>{" "}
+                      درس
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="text-[#8E3A7A] hover:text-[#6F2B5F] font-semibold inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>مسح البحث</span>
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
-                  <div className="font-serif-arabic text-lg font-bold text-[#8E3A7A] leading-relaxed">
-                    «لَّـٰكِنِ ٱللَّهُ يَشْهَدُ بِمَآ أَنزَلَ إِلَيْكَ ۖ أَنزَلَهُۥ بِعِلْمِهِۦ»
-                  </div>
+                  {instantSearchResults.total === 0 ? (
+                    <div className="p-8 text-center text-sm text-[#6E4E65]">
+                      لم يتم العثور على نتائج مطابقة لـ «{searchQuery.trim()}». جرّب البحث باسم السورة أو كلمة أخرى.
+                    </div>
+                  ) : (
+                    <div className="max-h-[26rem] overflow-y-auto divide-y divide-[#FAF3F6]">
+                      {/* Matched Series & Surahs */}
+                      {instantSearchResults.series.length > 0 && (
+                        <div className="p-3.5 sm:p-4">
+                          <div className="text-[11px] font-bold text-[#2E5741] mb-2.5 flex items-center gap-1.5">
+                            <FolderOpen className="w-3.5 h-3.5" />
+                            <span>القوائم والسور المطابقة ({instantSearchResults.series.length})</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {instantSearchResults.series.slice(0, 8).map((s) => {
+                              const st = getRecursiveSeriesStats(data.series, data.lessons, s.id);
+                              const parentPath = s.parentId
+                                ? getSeriesPathLabel(data.series, s.parentId)
+                                : null;
+                              return (
+                                <Link
+                                  key={s.id}
+                                  href={`/series/${s.slug}`}
+                                  className="group flex items-center justify-between gap-2.5 p-2.5 rounded-xl border border-[#EAD5E1]/80 bg-[#FAF3F6]/40 hover:bg-[#EBF4EE]/60 hover:border-[#3D6B52]/50 transition-colors"
+                                >
+                                  <div className="min-w-0">
+                                    {parentPath && (
+                                      <div className="text-[10px] text-[#2E5741] font-medium truncate">
+                                        {parentPath}
+                                      </div>
+                                    )}
+                                    <div className="font-serif-arabic text-sm sm:text-base font-bold text-[#2B1626] group-hover:text-[#8E3A7A] truncate">
+                                      {s.title}
+                                    </div>
+                                  </div>
+                                  <div className="shrink-0 flex items-center gap-1.5 text-[11px] font-semibold text-[#2E5741] bg-white px-2.5 py-1 rounded-lg border border-[#C8DFCF]">
+                                    <span>{st.totalLessonsCount} درس</span>
+                                    <ArrowLeft className="w-3 h-3 text-[#8E3A7A]" />
+                                  </div>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
-                  <div className="mt-1.5 text-xs text-[#3D6B52] font-semibold">
-                    [سورة النساء: 166]
-                  </div>
+                      {/* Matched Lessons with Instant Play */}
+                      {instantSearchResults.lessons.length > 0 && (
+                        <div className="p-3.5 sm:p-4">
+                          <div className="text-[11px] font-bold text-[#8E3A7A] mb-2.5 flex items-center gap-1.5">
+                            <Headphones className="w-3.5 h-3.5" />
+                            <span>الدروس والمحاضرات المطابقة ({instantSearchResults.lessons.length})</span>
+                          </div>
+                          <div className="space-y-2">
+                            {instantSearchResults.lessons.slice(0, 15).map((lesson) => {
+                              const pathLabel = lesson.seriesId
+                                ? getSeriesPathLabel(data.series, lesson.seriesId)
+                                : "درس مفرد";
+                              return (
+                                <div
+                                  key={lesson.id}
+                                  className="flex items-center justify-between gap-3 p-2.5 rounded-xl border border-[#EAD5E1]/70 bg-white hover:border-[#8E3A7A]/60 hover:bg-[#FAF3F6]/40 transition-colors"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => playLesson(lesson, instantSearchResults.lessons)}
+                                      title="تشغيل الدرس الآن"
+                                      className="w-9 h-9 rounded-xl bg-[#8E3A7A] hover:bg-[#752D64] text-white flex items-center justify-center shrink-0 transition-colors cursor-pointer shadow-xs"
+                                    >
+                                      <Play className="w-4 h-4 fill-current mr-[-1px]" />
+                                    </button>
+                                    <div className="min-w-0 flex-1">
+                                      <Link
+                                        href={`/lessons/${lesson.id}`}
+                                        className="block font-semibold text-xs sm:text-sm text-[#2B1626] hover:text-[#8E3A7A] truncate"
+                                      >
+                                        {lesson.title}
+                                      </Link>
+                                      <div className="text-[11px] text-[#2E5741] truncate mt-0.5">
+                                        {pathLabel}
+                                      </div>
+                                    </div>
+                                  </div>
 
-                  <div className="mt-4 pt-4 border-t border-[#FAF3F6] w-full text-xs text-[#5C3D55] leading-relaxed">
-                    محتوى علمي ودعوي مبارك — متاح للنفع العام والاستماع المباشر والتحميل لوجه الله تعالى.
+                                  <Link
+                                    href={`/lessons/${lesson.id}`}
+                                    className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-[#FAF3F6] text-[#8E3A7A] hover:bg-[#EBC6DD]/50 transition-colors"
+                                  >
+                                    فتح الدرس
+                                  </Link>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {instantSearchResults.lessons.length > 15 && (
+                            <div className="mt-3 text-center">
+                              <a
+                                href="#lessons"
+                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8E3A7A] hover:underline"
+                              >
+                                <span>
+                                  عرض جميع الدروس المطابقة ({instantSearchResults.lessons.length}) بالأسفل
+                                </span>
+                                <ArrowLeft className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Compact, Balanced 4-Stat Strip */}
+              <div className="mt-4 pt-4 border-t border-[#FAF3F6] grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {/* Stat 1 */}
+                <div className="flex items-center gap-3 px-3 py-2 rounded-2xl bg-[#FAF3F6]/60">
+                  <div className="w-10 h-10 rounded-xl bg-white border border-[#EBC6DD] text-[#8E3A7A] flex items-center justify-center shrink-0 shadow-2xs">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-serif-arabic text-xl font-bold text-[#8E3A7A] leading-none">
+                      {data.series.length}
+                    </div>
+                    <div className="text-[11px] text-[#5C3D55] font-medium mt-1">
+                      سلسلة علمية
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stat 2 */}
+                <div className="flex items-center gap-3 px-3 py-2 rounded-2xl bg-[#EBF4EE]/55">
+                  <div className="w-10 h-10 rounded-xl bg-white border border-[#C8DFCF] text-[#3D6B52] flex items-center justify-center shrink-0 shadow-2xs">
+                    <Headphones className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-serif-arabic text-xl font-bold text-[#2E5741] leading-none">
+                      {data.lessons.length}
+                    </div>
+                    <div className="text-[11px] text-[#5C3D55] font-medium mt-1">
+                      درس ومحاضرة
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stat 3 */}
+                <div className="flex items-center gap-3 px-3 py-2 rounded-2xl bg-[#FAF3F6]/60">
+                  <div className="w-10 h-10 rounded-xl bg-white border border-[#EBC6DD] text-[#B8559B] flex items-center justify-center shrink-0 shadow-2xs">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-serif-arabic text-base sm:text-lg font-bold text-[#8E3A7A] leading-none">
+                      {formatTotalDurationArabic(totalDurationSeconds)}
+                    </div>
+                    <div className="text-[11px] text-[#5C3D55] font-medium mt-1">
+                      محتوى صوتي
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stat 4 */}
+                <div className="flex items-center gap-3 px-3 py-2 rounded-2xl bg-[#EBF4EE]/55">
+                  <div className="w-10 h-10 rounded-xl bg-white border border-[#C8DFCF] text-[#3D6B52] flex items-center justify-center shrink-0 shadow-2xs">
+                    <Grid className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-serif-arabic text-xl font-bold text-[#2E5741] leading-none">
+                      {availableCategories.length}
+                    </div>
+                    <div className="text-[11px] text-[#5C3D55] font-medium mt-1">
+                      أبواب علمية
+                    </div>
                   </div>
                 </div>
               </div>
@@ -298,163 +548,68 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
         </div>
       </section>
 
-      {/* 3. Statistics – الإحصائيات المرتبطة بالبيانات الفعلية */}
-      <section className="max-w-6xl mx-auto px-4 -mt-8 relative z-20">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          {/* Card 1: السلاسل */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#EAD5E1] shadow-[0_4px_20px_rgba(142,58,122,0.04)] flex items-center gap-3.5 hover:border-[#8E3A7A]/40 transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-[#FAF3F6] border border-[#EBC6DD] text-[#8E3A7A] flex items-center justify-center shrink-0">
-              <Layers className="w-5 h-5 text-[#8E3A7A]" />
+      {/* ================================================================= */}
+      {/* 2. CATEGORIES – التصنيفات العلمية بتصميم هادئ ومتجاوب              */}
+      {/* ================================================================= */}
+      <section id="categories" className="max-w-6xl mx-auto px-4 mt-14 sm:mt-16">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
+          <div>
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#2E5741] mb-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#3D6B52]" />
+              <span>التصنيفات المنهجية</span>
             </div>
-            <div>
-              <div className="font-serif-arabic text-2xl sm:text-3xl font-bold text-[#8E3A7A] leading-none">
-                {data.series.length}
-              </div>
-              <div className="text-xs text-[#6E4E65] font-medium mt-1">
-                سلسلة علمية
-              </div>
-            </div>
+            <h2 className="font-serif-arabic text-2xl sm:text-3xl font-bold text-[#2B1626]">
+              أبواب العلم والتزكية
+            </h2>
           </div>
 
-          {/* Card 2: الدروس */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#EAD5E1] shadow-[0_4px_20px_rgba(142,58,122,0.04)] flex items-center gap-3.5 hover:border-[#8E3A7A]/40 transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-[#FAF3F6] border border-[#EBC6DD] text-[#B8559B] flex items-center justify-center shrink-0">
-              <Headphones className="w-5 h-5 text-[#B8559B]" />
-            </div>
-            <div>
-              <div className="font-serif-arabic text-2xl sm:text-3xl font-bold text-[#8E3A7A] leading-none">
-                {data.lessons.length}
-              </div>
-              <div className="text-xs text-[#6E4E65] font-medium mt-1">
-                درس ومحاضرة
-              </div>
-            </div>
-          </div>
-
-          {/* Card 3: إجمالي المدة */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#EAD5E1] shadow-[0_4px_20px_rgba(142,58,122,0.04)] flex items-center gap-3.5 hover:border-[#8E3A7A]/40 transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-[#EBF4EE] border border-[#3D6B52]/20 text-[#3D6B52] flex items-center justify-center shrink-0">
-              <Clock className="w-5 h-5 text-[#3D6B52]" />
-            </div>
-            <div>
-              <div className="font-serif-arabic text-xl sm:text-2xl font-bold text-[#8E3A7A] leading-none">
-                {formatTotalDurationArabic(totalDurationSeconds)}
-              </div>
-              <div className="text-xs text-[#6E4E65] font-medium mt-1">
-                محتوى صوتي مسجل
-              </div>
-            </div>
-          </div>
-
-          {/* Card 4: التصنيفات */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white border border-[#EAD5E1] shadow-[0_4px_20px_rgba(142,58,122,0.04)] flex items-center gap-3.5 hover:border-[#8E3A7A]/40 transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-[#FAF3F6] border border-[#EBC6DD] text-[#8E3A7A] flex items-center justify-center shrink-0">
-              <Grid className="w-5 h-5 text-[#8E3A7A]" />
-            </div>
-            <div>
-              <div className="font-serif-arabic text-2xl sm:text-3xl font-bold text-[#8E3A7A] leading-none">
-                {availableCategories.length}
-              </div>
-              <div className="text-xs text-[#6E4E65] font-medium mt-1">
-                تصنيفات علمية
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Search Section – صندوق البحث المطوّر باللغة العربية */}
-      <section className="max-w-4xl mx-auto px-4 mt-12">
-        <div className="relative">
-          <div className="relative flex items-center rounded-2xl bg-white border border-[#EAD5E1] shadow-[0_4px_24px_rgba(142,58,122,0.06)] focus-within:border-[#8E3A7A] focus-within:ring-2 focus-within:ring-[#8E3A7A]/20 transition-all">
-            <div className="pr-4 text-[#8E3A7A]">
-              <Search className="w-5 h-5" />
-            </div>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="ابحث عن درس، سورة، سلسلة، أو موضوع باللغة العربية..."
-              className="w-full py-4 pr-3 pl-12 bg-transparent text-sm sm:text-base text-[#2B1626] placeholder:text-[#82607A] focus:outline-none"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="absolute left-4 p-1 rounded-full hover:bg-[#FAF3F6] text-[#8E3A7A] cursor-pointer"
-                aria-label="مسح البحث"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          {searchQuery.trim() && (
-            <div className="mt-2 text-xs text-[#6E4E65] flex items-center justify-between px-2">
-              <span>
-                نتائج البحث عن: «{searchQuery}» (تم العثور على {filteredLessons.length} درس و {filteredSeries.length} سلسلة)
-              </span>
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                className="text-[#8E3A7A] hover:underline"
-              >
-                إلغاء الفلتر
-              </button>
-            </div>
+          {selectedCategory !== "الكل" && (
+            <button
+              type="button"
+              onClick={() => setSelectedCategory("الكل")}
+              className="self-start sm:self-auto inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-xl bg-white border border-[#EAD5E1] text-[#8E3A7A] hover:border-[#8E3A7A] transition-colors cursor-pointer"
+            >
+              <span>عرض جميع الأبواب</span>
+              <X className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
-      </section>
 
-      {/* 5. Categories – التصنيفات العلمية على شكل بطاقات مرئية */}
-      <section id="categories" className="max-w-6xl mx-auto px-4 mt-16">
-        <div className="text-center max-w-xl mx-auto mb-8">
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-[#FAF3F6] border border-[#EBC6DD] text-xs font-semibold text-[#8E3A7A] mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-[#B8559B]" />
-            <span>التصنيفات المنهجية</span>
-          </div>
-          <h2 className="font-serif-arabic text-2xl sm:text-3xl font-bold text-[#2B1626]">
-            أبواب العلم والتزكية
-          </h2>
-          <p className="text-xs sm:text-sm text-[#5C3D55] mt-1">
-            اختر الباب العلمي لتصفح الدروس والسلاسل التابعة له مباشرة
-          </p>
-        </div>
-
-        {/* Category Cards Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        {/* Flexible Category Pills/Cards that look balanced for 1 or many categories */}
+        <div className="flex flex-wrap gap-3">
           {/* Card 'All' */}
           <button
             type="button"
             onClick={() => setSelectedCategory("الكل")}
-            className={`p-4 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-between ${
+            className={`group px-4 py-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 ${
               selectedCategory === "الكل"
-                ? "bg-gradient-to-b from-[#8E3A7A] to-[#B8559B] text-white border-transparent shadow-md transform -translate-y-1"
-                : "bg-white border-[#EAD5E1] text-[#2B1626] hover:border-[#8E3A7A] hover:bg-[#FAF3F6]"
+                ? "bg-[#8E3A7A] text-white border-[#8E3A7A] shadow-[0_6px_20px_rgba(142,58,122,0.22)]"
+                : "bg-white border-[#EAD5E1] text-[#2B1626] hover:border-[#8E3A7A]/60 hover:bg-[#FAF3F6]"
             }`}
           >
             <div
-              className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2.5 ${
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                 selectedCategory === "الكل"
                   ? "bg-white/20 text-white"
                   : "bg-[#FAF3F6] text-[#8E3A7A]"
               }`}
             >
-              <Grid className="w-5 h-5" />
+              <Grid className="w-4 h-4" />
             </div>
-            <div className="font-serif-arabic text-sm sm:text-base font-bold leading-tight">
-              جميع الأبواب
-            </div>
-            <div
-              className={`text-[11px] mt-1 ${
-                selectedCategory === "الكل" ? "text-white/80" : "text-[#6E4E65]"
-              }`}
-            >
-              {data.lessons.length} درس
+            <div className="text-right">
+              <div className="font-serif-arabic text-sm sm:text-base font-bold leading-tight">
+                جميع الأبواب
+              </div>
+              <div
+                className={`text-[11px] mt-0.5 ${
+                  selectedCategory === "الكل" ? "text-white/85" : "text-[#6E4E65]"
+                }`}
+              >
+                {data.lessons.length} درس
+              </div>
             </div>
           </button>
 
-          {/* Active Actual Categories */}
           {availableCategories.map((cat) => {
             const meta = CATEGORY_META[cat] || {
               icon: BookOpen,
@@ -470,32 +625,36 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
                 key={cat}
                 type="button"
                 onClick={() => setSelectedCategory(isSelected ? "الكل" : cat)}
-                className={`p-4 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-between ${
+                className={`group px-4 py-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 ${
                   isSelected
-                    ? "bg-gradient-to-b from-[#8E3A7A] to-[#B8559B] text-white border-transparent shadow-md transform -translate-y-1"
-                    : "bg-white border-[#EAD5E1] text-[#2B1626] hover:border-[#8E3A7A] hover:bg-[#FAF3F6]"
+                    ? isQuran
+                      ? "bg-[#2E5741] text-white border-[#2E5741] shadow-[0_6px_20px_rgba(46,87,65,0.22)]"
+                      : "bg-[#8E3A7A] text-white border-[#8E3A7A] shadow-[0_6px_20px_rgba(142,58,122,0.22)]"
+                    : "bg-white border-[#EAD5E1] text-[#2B1626] hover:border-[#3D6B52]/50 hover:bg-[#FAF3F6]/70"
                 }`}
               >
                 <div
-                  className={`w-11 h-11 rounded-xl flex items-center justify-center mb-2.5 ${
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                     isSelected
                       ? "bg-white/20 text-white"
                       : isQuran
-                      ? "bg-[#EBF4EE] text-[#3D6B52]"
+                      ? "bg-[#EBF4EE] text-[#2E5741]"
                       : "bg-[#FAF3F6] text-[#8E3A7A]"
                   }`}
                 >
-                  <IconComponent className="w-5 h-5" />
+                  <IconComponent className="w-4 h-4" />
                 </div>
-                <div className="font-serif-arabic text-sm sm:text-base font-bold leading-tight">
-                  {cat}
-                </div>
-                <div
-                  className={`text-[11px] mt-1 ${
-                    isSelected ? "text-white/80" : "text-[#6E4E65]"
-                  }`}
-                >
-                  {count} {count === 1 ? "درس" : "دروس"}
+                <div className="text-right">
+                  <div className="font-serif-arabic text-sm sm:text-base font-bold leading-tight">
+                    {cat}
+                  </div>
+                  <div
+                    className={`text-[11px] mt-0.5 ${
+                      isSelected ? "text-white/85" : "text-[#6E4E65]"
+                    }`}
+                  >
+                    {count} {count === 1 ? "درس" : "دروس"}
+                  </div>
                 </div>
               </button>
             );
@@ -503,30 +662,32 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
         </div>
       </section>
 
-      {/* 6. Featured Series – السلاسل العلمية */}
-      <section id="series" className="max-w-6xl mx-auto px-4 mt-20">
+      {/* ================================================================= */}
+      {/* 3. FEATURED SERIES – السلاسل العلمية والمنهجية                     */}
+      {/* ================================================================= */}
+      <section id="series" className="max-w-6xl mx-auto px-4 mt-16 sm:mt-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-4 border-b border-[#EAD5E1]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#FAF3F6] border border-[#EBC6DD] text-[#8E3A7A] flex items-center justify-center">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-[#EBF4EE] border border-[#C8DFCF] text-[#2E5741] flex items-center justify-center shrink-0">
               <BookOpen className="w-5 h-5" />
             </div>
             <div>
               <h2 className="font-serif-arabic text-2xl sm:text-3xl font-bold text-[#2B1626]">
                 السلاسل العلمية والمنهجية
               </h2>
-              <p className="text-xs sm:text-sm text-[#5C3D55]">
+              <p className="text-xs sm:text-sm text-[#5C3D55] mt-0.5">
                 شروحات مرتبة ومترابطة للاستماع والمتابعة المنهجية
               </p>
             </div>
           </div>
 
           {selectedCategory !== "الكل" && (
-            <div className="text-xs bg-[#FAF3F6] border border-[#EBC6DD] text-[#8E3A7A] px-3 py-1.5 rounded-xl font-medium self-start flex items-center gap-2">
+            <div className="text-xs bg-[#EBF4EE] border border-[#C8DFCF] text-[#2E5741] px-3.5 py-1.5 rounded-xl font-semibold self-start flex items-center gap-2">
               <span>تصفية بحسب: {selectedCategory}</span>
               <button
                 type="button"
                 onClick={() => setSelectedCategory("الكل")}
-                className="hover:underline text-[#B8559B]"
+                className="hover:underline text-[#8E3A7A] cursor-pointer"
               >
                 (عرض الكل)
               </button>
@@ -541,41 +702,58 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredSeries.map((series) => {
-              const st = seriesStats.get(series.id) || { count: 0, totalSeconds: 0 };
+              const recStats = getRecursiveSeriesStats(data.series, data.lessons, series.id);
+              const directChildren = getDirectChildSeries(data.series, series.id);
               const style = ACCENT_STYLES[series.coverAccent] || ACCENT_STYLES.purple;
-              const isTafsir = series.category.includes("تفسير");
+              const isTafsir =
+                series.category.includes("تفسير") || series.category.includes("قرآن");
+              const isNestedMatch = Boolean(series.parentId && seriesMap.has(series.parentId));
 
               return (
                 <Link
                   key={series.id}
                   href={`/series/${series.slug}`}
-                  className="group rounded-3xl border border-[#EAD5E1] bg-white overflow-hidden hover:border-[#8E3A7A] hover:shadow-[0_8px_30px_rgba(142,58,122,0.1)] transition-all flex flex-col"
+                  className="group rounded-3xl border border-[#EAD5E1] bg-white overflow-hidden hover:border-[#8E3A7A]/70 hover:shadow-[0_12px_32px_rgba(142,58,122,0.09)] transition-all flex flex-col"
                 >
-                  {/* Decorative Header Bar */}
-                  <div className={`h-3 bg-gradient-to-l ${style.bar}`} />
+                  {/* Decorative Top Bar */}
+                  <div className={`h-2.5 bg-gradient-to-l ${style.bar}`} />
 
                   <div className="p-6 flex-1 flex flex-col">
                     {/* Top Badges */}
-                    <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3.5">
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-semibold border ${
                           isTafsir
-                            ? "bg-[#EBF4EE] text-[#3D6B52] border-[#3D6B52]/20"
+                            ? "bg-[#EBF4EE] text-[#2E5741] border-[#C8DFCF]"
                             : "bg-[#FAF3F6] text-[#8E3A7A] border-[#EBC6DD]"
                         }`}
                       >
                         {series.category}
                       </span>
-                      <span
-                        className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${
-                          series.status === "completed"
-                            ? "bg-[#EBF4EE] text-[#3D6B52] border border-[#3D6B52]/20"
-                            : "bg-[#FFF4E5] text-[#B8559B] border border-[#FFE0B2]"
-                        }`}
-                      >
-                        {series.status === "completed" ? "مكتملة" : "مستمرة"}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {directChildren.length > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-[#EBF4EE] text-[#2E5741] border border-[#C8DFCF]">
+                            <FolderOpen className="w-3 h-3" />
+                            <span>{directChildren.length} فرعي</span>
+                          </span>
+                        )}
+                        <span
+                          className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
+                            series.status === "completed"
+                              ? "bg-[#EBF4EE] text-[#2E5741] border-[#C8DFCF]"
+                              : "bg-[#FAF3F6] text-[#B8559B] border-[#EBC6DD]"
+                          }`}
+                        >
+                          {series.status === "completed" ? "مكتملة" : "مستمرة"}
+                        </span>
+                      </div>
                     </div>
+
+                    {isNestedMatch && (
+                      <div className="text-[11px] text-[#2E5741] font-medium mb-1 truncate">
+                        {getSeriesPathLabel(data.series, series.parentId ?? null)}
+                      </div>
+                    )}
 
                     {/* Series Title */}
                     <h3 className="font-serif-arabic text-xl sm:text-2xl font-bold text-[#2B1626] group-hover:text-[#8E3A7A] transition-colors leading-snug">
@@ -584,26 +762,47 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
 
                     {/* Series Description */}
                     <p className="mt-2.5 text-xs sm:text-sm text-[#5C3D55] line-clamp-3 leading-relaxed flex-1">
-                      {series.description || "سلسلة علمية منهجية للداعية فاطمة حجازي."}
+                      {series.description || "سلسلة علمية منهجية للأستاذة فاطمة حجازي."}
                     </p>
 
-                    {/* Footer Info: Lessons count, Duration, Button */}
+                    {/* Preview chips of nested sub-folders */}
+                    {directChildren.length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-1.5">
+                        {directChildren.slice(0, 3).map((child) => (
+                          <span
+                            key={child.id}
+                            className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-lg bg-[#F6FAF7] border border-[#C8DFCF]/80 text-[#2E5741] font-medium"
+                          >
+                            <FolderOpen className="w-3 h-3 text-[#3D6B52]" />
+                            {child.title}
+                          </span>
+                        ))}
+                        {directChildren.length > 3 && (
+                          <span className="text-[11px] px-2 py-1 rounded-lg bg-[#FAF3F6] text-[#8E3A7A] font-semibold">
+                            +{directChildren.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Footer Info */}
                     <div className="mt-6 pt-4 border-t border-[#FAF3F6] flex items-center justify-between text-xs text-[#6E4E65]">
                       <div className="flex items-center gap-3">
-                        <span className="inline-flex items-center gap-1 font-semibold text-[#8E3A7A]">
+                        <span className="inline-flex items-center gap-1 font-semibold text-[#2E5741]">
                           <BookOpen className="w-3.5 h-3.5 text-[#3D6B52]" />
-                          {st.count} {st.count === 1 ? "درس" : "دروس"}
+                          {recStats.totalLessonsCount}{" "}
+                          {recStats.totalLessonsCount === 1 ? "درس" : "دروس"}
                         </span>
-                        {st.totalSeconds > 0 && (
+                        {recStats.totalSeconds > 0 && (
                           <span className="inline-flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-[#D68FBF]" />
-                            {formatTotalDurationArabic(st.totalSeconds)}
+                            <Clock className="w-3.5 h-3.5 text-[#B8559B]" />
+                            {formatTotalDurationArabic(recStats.totalSeconds)}
                           </span>
                         )}
                       </div>
 
                       <span className="inline-flex items-center gap-1 text-[#8E3A7A] font-bold group-hover:-translate-x-1 transition-transform">
-                        <span>استعراض السلسلة</span>
+                        <span>استعراض</span>
                         <ArrowLeft className="w-3.5 h-3.5" />
                       </span>
                     </div>
@@ -615,24 +814,26 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
         )}
       </section>
 
-      {/* 7. Latest Lessons – أحدث الدروس والمحاضرات الصوتية */}
-      <section id="lessons" className="max-w-6xl mx-auto px-4 mt-20">
+      {/* ================================================================= */}
+      {/* 4. LATEST LESSONS – الدروس والمحاضرات الصوتية                      */}
+      {/* ================================================================= */}
+      <section id="lessons" className="max-w-6xl mx-auto px-4 mt-16 sm:mt-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-4 border-b border-[#EAD5E1]">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#FAF3F6] border border-[#EBC6DD] text-[#8E3A7A] flex items-center justify-center">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-[#FAF3F6] border border-[#EBC6DD] text-[#8E3A7A] flex items-center justify-center shrink-0">
               <Headphones className="w-5 h-5" />
             </div>
             <div>
               <h2 className="font-serif-arabic text-2xl sm:text-3xl font-bold text-[#2B1626]">
                 الدروس والمحاضرات الصوتية
               </h2>
-              <p className="text-xs sm:text-sm text-[#5C3D55]">
+              <p className="text-xs sm:text-sm text-[#5C3D55] mt-0.5">
                 استمع مباشرة بنقاء صوتي عالي، أو حمّل الملفات بصيغة MP3 مجاناً
               </p>
             </div>
           </div>
 
-          {/* Filter Tab: All vs Single */}
+          {/* Filter Tabs */}
           <div className="inline-flex rounded-2xl border border-[#EAD5E1] bg-white p-1 self-start shadow-xs">
             <button
               type="button"
@@ -677,34 +878,65 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
         )}
       </section>
 
-      {/* About Section – نبذة عن الداعية فاطمة حجازي */}
+      {/* ================================================================= */}
+      {/* 5. ABOUT & PLATFORM IDENTITY – نبذة عن الأستاذة وشعار المنصة       */}
+      {/* ================================================================= */}
       <section
         id="about"
-        className="max-w-6xl mx-auto px-4 mt-24 pt-12 border-t border-[#EAD5E1]"
+        className="max-w-6xl mx-auto px-4 mt-20 sm:mt-24 pt-10 border-t border-[#EAD5E1]"
       >
-        <div className="rounded-3xl bg-gradient-to-br from-[#FAF3F6] via-white to-[#FAF3F6] border border-[#EAD5E1] p-8 sm:p-12 shadow-[0_8px_30px_rgba(142,58,122,0.04)] relative overflow-hidden">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white border border-[#EBC6DD] text-xs font-semibold text-[#8E3A7A] mb-4">
-              <Sparkles className="w-3.5 h-3.5 text-[#B8559B]" />
-              <span>نبذة تعريفية</span>
+        <div className="rounded-3xl bg-gradient-to-br from-white via-[#FAF3F6]/70 to-[#EBF4EE]/55 border border-[#EAD5E1] p-7 sm:p-11 shadow-[0_10px_36px_rgba(142,58,122,0.05)] relative overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+            {/* Bio & Mission Column */}
+            <div className="lg:col-span-7">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#EBF4EE] border border-[#C8DFCF] text-xs font-semibold text-[#2E5741] mb-4">
+                <Sparkles className="w-3.5 h-3.5 text-[#3D6B52]" />
+                <span>نبذة تعريفية</span>
+              </div>
+
+              <h3 className="font-serif-arabic text-2xl sm:text-3xl font-bold text-[#2B1626] leading-snug">
+                عن الأستاذة فاطمة حجازي ومنصة «أنزله بعلمه»
+              </h3>
+
+              <p className="mt-4 text-sm sm:text-base text-[#5C3D55] leading-relaxed">
+                {data.settings.bio}
+              </p>
+
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm text-[#2B1626] font-medium">
+                <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/85 border border-[#EAD5E1]/70">
+                  <CheckCircle2 className="w-4 h-4 text-[#3D6B52] shrink-0" />
+                  <span>شروحات وتأملات قرآنية مبنية على الدليل</span>
+                </div>
+                <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-white/85 border border-[#EAD5E1]/70">
+                  <CheckCircle2 className="w-4 h-4 text-[#8E3A7A] shrink-0" />
+                  <span>محتوى مجاني متاح للاستماع والتحميل</span>
+                </div>
+              </div>
             </div>
 
-            <h3 className="font-serif-arabic text-2xl sm:text-4xl font-bold text-[#2B1527] leading-tight">
-              عن الداعية أ. فاطمة حجازي ومنصة «أنزله بعلمه»
-            </h3>
+            {/* Dignified Quranic Emblem Card (Moved gracefully out of Hero) */}
+            <div className="lg:col-span-5">
+              <div className="rounded-3xl bg-white/95 border border-[#C8DFCF] p-6 sm:p-7 text-center shadow-[0_8px_28px_rgba(61,107,82,0.07)]">
+                <div className="w-12 h-12 mx-auto rounded-2xl bg-[#EBF4EE] border border-[#C8DFCF] flex items-center justify-center mb-4">
+                  <span className="font-serif-arabic text-xl font-bold text-[#2E5741]">
+                    ۝
+                  </span>
+                </div>
 
-            <p className="mt-4 text-sm sm:text-base text-[#5C3D55] leading-relaxed">
-              {data.settings.bio}
-            </p>
+                <div className="font-serif-arabic text-lg sm:text-xl font-bold text-[#8E3A7A] leading-relaxed">
+                  «لَّـٰكِنِ ٱللَّهُ يَشْهَدُ بِمَآ أَنزَلَ إِلَيْكَ ۖ أَنزَلَهُۥ بِعِلْمِهِۦ»
+                </div>
 
-            <div className="mt-6 flex flex-wrap items-center gap-4 text-xs sm:text-sm text-[#8E3A7A] font-semibold">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#3D6B52]" />
-                <span>شروحات وتأملات قرآنية مبنية على الدليل الصحيح</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#3D6B52]" />
-                <span>محتوى مجاني ومتاح للجميع للنفع العام والتحميل</span>
+                <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#2E5741] bg-[#EBF4EE] px-3 py-1 rounded-full">
+                  <span>شعار المنصة: أنزله بعلمه</span>
+                  <span>•</span>
+                  <span>سورة النساء: 166</span>
+                </div>
+
+                <p className="mt-4 pt-4 border-t border-[#FAF3F6] text-xs text-[#5C3D55] leading-relaxed">
+                  محتوى علمي ودعوي مبارك — متاح للنفع العام والاستماع المباشر
+                  والتحميل لوجه الله تعالى.
+                </p>
               </div>
             </div>
           </div>

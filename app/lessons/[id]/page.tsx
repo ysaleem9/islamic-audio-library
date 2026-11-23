@@ -4,7 +4,7 @@ import { LessonPageDynamicClient } from "@/components/LessonPageDynamicClient";
 
 export function generateStaticParams() {
   const ids = new Set<string>(["placeholder"]);
-  for (const l of fallbackData.lessons) {
+  for (const l of fallbackData.lessons as Array<{ id: string }>) {
     ids.add(l.id);
   }
   return Array.from(ids).map((id) => ({ id }));

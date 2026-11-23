@@ -16,7 +16,12 @@ export async function PUT(
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const updated = await updateSeries(id, body);
+    const updated = await updateSeries(id, {
+      ...body,
+      ...(body.parentId !== undefined
+        ? { parentId: body.parentId ? String(body.parentId) : null }
+        : {}),
+    });
     if (!updated) {
       return NextResponse.json({ error: "السلسلة غير موجودة" }, { status: 404 });
     }

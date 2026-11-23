@@ -61,6 +61,8 @@ export function SeriesPageDynamicClient({ initialId }: { initialId: string }) {
       <SeriesDetailClient
         series={series}
         lessons={lessons}
+        allSeries={data.series}
+        allLessons={data.lessons}
         sheikhName={data.settings.sheikhName}
       />
       <Footer settings={data.settings} />

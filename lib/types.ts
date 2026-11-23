@@ -25,6 +25,7 @@ export interface Series {
   id: string;
   title: string;
   slug: string;
+  parentId?: string | null;
   category: string;
   description: string;
   status: SeriesStatus;
@@ -82,7 +83,7 @@ export const ADMIN_PERMISSION_LABELS: Record<
     description: "إنشاء وتعديل وحذف السلاسل العلمية وترتيبها",
   },
   manage_settings: {
-    title: "إعدادات الموقع والداعية",
+    title: "إعدادات الموقع والأستاذة",
     description: "تعديل اسم الموقع، النبذة التعريفية، وروابط التواصل",
   },
   manage_admins: {

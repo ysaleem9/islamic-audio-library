@@ -139,7 +139,7 @@ export function LessonDetailClient({
           </h1>
 
           <p className="mt-2 text-xs sm:text-sm text-[#5C3D55] font-medium">
-            الداعية {sheikhName}
+            {sheikhName.startsWith("الأستاذة") ? sheikhName : `الأستاذة ${sheikhName}`}
           </p>
 
           {/* Meta Info Row */}

@@ -57,7 +57,7 @@ export function Footer({ settings }: { settings: SiteSettings }) {
               <li>
                 <Link href="/#about" className="hover:text-[#8E3A7A] transition-colors flex items-center gap-1.5">
                   <Info className="w-3.5 h-3.5 text-[#3D6B52]" />
-                  <span>عن الداعية فاطمة حجازي</span>
+                  <span>عن الأستاذة فاطمة حجازي</span>
                 </Link>
               </li>
             </ul>
@@ -99,7 +99,7 @@ export function Footer({ settings }: { settings: SiteSettings }) {
         {/* Bottom Copyright Row */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#6E4E65]">
           <div>
-            جميع الحقوق محفوظة © {new Date().getFullYear()} — منصة الداعية أ. فاطمة حجازي «أنزله بعلمه»
+            جميع الحقوق محفوظة © {new Date().getFullYear()} — منصة الأستاذة فاطمة حجازي «أنزله بعلمه»
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-[#3D6B52] font-semibold">
             <span>جُعل هذا الموقع خالصاً لوجه الله تعالى ونفعاً لعموم المسلمين</span>

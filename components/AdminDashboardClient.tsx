@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,10 +8,13 @@ import {
   BookOpen,
   CheckCircle2,
   CloudUpload,
+  CornerDownLeft,
   Database,
   DownloadCloud,
   Edit3,
   ExternalLink,
+  Folder,
+  FolderPlus,
   Headphones,
   HelpCircle,
   KeyRound,
@@ -42,6 +45,11 @@ import {
   type SiteSettings,
 } from "@/lib/types";
 import { formatDuration, parseDurationInput } from "@/lib/format";
+import {
+  flattenSeriesTree,
+  getDescendantSeriesIds,
+  getSeriesPathLabel,
+} from "@/lib/seriesTree";
 import { useAudioPlayer } from "./AudioPlayerContext";
 
 interface AdminConfig {
@@ -124,12 +132,23 @@ export function AdminDashboardClient({
   // Series form state
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
   const [seriesTitle, setSeriesTitle] = useState("");
+  const [seriesParentId, setSeriesParentId] = useState<string>("");
   const [seriesCategory, setSeriesCategory] = useState<string>(DEFAULT_CATEGORIES[0]);
   const [seriesDescription, setSeriesDescription] = useState("");
   const [seriesStatus, setSeriesStatus] = useState<Series["status"]>("ongoing");
   const [seriesAccent, setSeriesAccent] = useState<Series["coverAccent"]>("emerald");
   const [seriesSortOrder, setSeriesSortOrder] = useState("0");
   const [savingSeries, setSavingSeries] = useState(false);
+
+  // Hierarchical flattened list of series for tree UI and dropdowns
+  const flattenedSeries = useMemo(() => flattenSeriesTree(data.series), [data.series]);
+
+  // Exclude self & descendants from parent options when editing a series
+  const availableParentOptions = useMemo(() => {
+    if (!editingSeriesId) return flattenedSeries;
+    const blocked = getDescendantSeriesIds(data.series, editingSeriesId);
+    return flattenedSeries.filter((item) => !blocked.has(item.series.id));
+  }, [flattenedSeries, data.series, editingSeriesId]);
 
   // Settings form state
   const [settingsForm, setSettingsForm] = useState<SiteSettings>(initialData.settings);
@@ -413,6 +432,7 @@ export function AdminDashboardClient({
   const resetSeriesForm = () => {
     setEditingSeriesId(null);
     setSeriesTitle("");
+    setSeriesParentId("");
     setSeriesCategory(DEFAULT_CATEGORIES[0]);
     setSeriesDescription("");
     setSeriesStatus("ongoing");
@@ -423,11 +443,25 @@ export function AdminDashboardClient({
   const startEditSeries = (s: Series) => {
     setEditingSeriesId(s.id);
     setSeriesTitle(s.title);
+    setSeriesParentId(s.parentId || "");
     setSeriesCategory(s.category);
     setSeriesDescription(s.description);
     setSeriesStatus(s.status);
     setSeriesAccent(s.coverAccent);
     setSeriesSortOrder(String(s.sortOrder));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const startCreateSubSeries = (parent: Series) => {
+    setEditingSeriesId(null);
+    setSeriesTitle("");
+    setSeriesParentId(parent.id);
+    setSeriesCategory(parent.category);
+    setSeriesDescription("");
+    setSeriesStatus("ongoing");
+    setSeriesAccent(parent.coverAccent || "emerald");
+    setSeriesSortOrder("0");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleSaveSeries = async (e: React.FormEvent) => {
@@ -443,6 +477,7 @@ export function AdminDashboardClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: seriesTitle,
+          parentId: seriesParentId || null,
           category: seriesCategory,
           description: seriesDescription,
           status: seriesStatus,
@@ -457,7 +492,14 @@ export function AdminDashboardClient({
       }
       await refreshData();
       resetSeriesForm();
-      showNotice("success", editingSeriesId ? "تم تحديث السلسلة" : "تم إنشاء السلسلة بنجاح");
+      showNotice(
+        "success",
+        editingSeriesId
+          ? "تم تحديث القائمة بنجاح"
+          : seriesParentId
+          ? "تم إنشاء القائمة الفرعية بنجاح"
+          : "تم إنشاء القائمة الرئيسية بنجاح"
+      );
     } catch {
       showNotice("error", "حدث خطأ أثناء حفظ السلسلة");
     } finally {
@@ -466,13 +508,17 @@ export function AdminDashboardClient({
   };
 
   const handleDeleteSeries = async (id: string) => {
-    if (!window.confirm("حذف السلسلة سيجعل دروسها دروساً مفردة (لن تُحذف الدروس). هل تريد المتابعة؟")) {
+    if (
+      !window.confirm(
+        "حذف هذه القائمة سيجعل دروسها المباشرة دروساً مفردة وسيرفع القوائم الفرعية تحتها إلى المستوى الأعلى (لن تُحذف الدروس أو القوائم الفرعية). هل تريد المتابعة؟"
+      )
+    ) {
       return;
     }
     const res = await fetch(`/api/series/${id}`, { method: "DELETE" });
     if (res.ok) {
       await refreshData();
-      showNotice("success", "تم حذف السلسلة");
+      showNotice("success", "تم حذف القائمة");
     }
   };
 
@@ -500,8 +546,7 @@ export function AdminDashboardClient({
     }
   };
 
-  const seriesNameById = (id: string | null) =>
-    id ? data.series.find((s) => s.id === id)?.title || "—" : "درس مفرد";
+  const seriesNameById = (id: string | null) => getSeriesPathLabel(data.series, id);
 
   // Admin management handlers
   const resetAdminForm = () => {
@@ -632,7 +677,7 @@ export function AdminDashboardClient({
     },
     {
       id: "settings" as AdminTab,
-      label: "إعدادات الموقع والداعية",
+      label: "إعدادات الموقع والأستاذة",
       icon: Settings,
       visible: canPermission("manage_settings"),
     },
@@ -864,10 +909,12 @@ export function AdminDashboardClient({
                     onChange={(e) => setLessonSeriesId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-[#EBC6DD] text-sm bg-white focus:outline-none focus:border-[#8E3A7A]"
                   >
-                    <option value="">درس مفرد (بدون سلسلة)</option>
-                    {data.series.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.title}
+                    <option value="">درس مفرد (بدون قائمة)</option>
+                    {flattenedSeries.map((item) => (
+                      <option key={item.series.id} value={item.series.id}>
+                        {item.depth > 0 ? `${"— ".repeat(item.depth)}↳ ` : ""}
+                        {item.series.title}
+                        {item.depth > 0 ? ` (${item.pathLabel})` : ""}
                       </option>
                     ))}
                   </select>
@@ -1089,9 +1136,9 @@ export function AdminDashboardClient({
                       className="px-3 py-2 rounded-xl border border-[#EBC6DD] text-sm bg-white"
                     >
                       <option value="">استيراد كدروس مفردة</option>
-                      {data.series.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          إضافة إلى سلسلة: {s.title}
+                      {flattenedSeries.map((item) => (
+                        <option key={item.series.id} value={item.series.id}>
+                          إضافة إلى: {item.pathLabel}
                         </option>
                       ))}
                     </select>
@@ -1167,7 +1214,7 @@ export function AdminDashboardClient({
           </div>
         )}
 
-        {/* TAB 3: SERIES */}
+        {/* TAB 3: SERIES & NESTED FOLDERS */}
         {tab === "series" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <form
@@ -1176,29 +1223,78 @@ export function AdminDashboardClient({
             >
               <div className="flex items-center justify-between">
                 <h2 className="font-serif-arabic text-xl font-bold text-[#8E3A7A]">
-                  {editingSeriesId ? "تعديل السلسلة" : "إنشاء سلسلة علمية جديدة"}
+                  {editingSeriesId
+                    ? "تعديل القائمة / السلسلة"
+                    : seriesParentId
+                    ? "إنشاء قائمة فرعية جديدة"
+                    : "إنشاء قائمة أو سلسلة جديدة"}
                 </h2>
-                {editingSeriesId && (
+                {(editingSeriesId || seriesParentId) && (
                   <button
                     type="button"
                     onClick={resetSeriesForm}
-                    className="text-xs text-[#6E4E65] hover:text-red-600"
+                    className="text-xs text-[#6E4E65] hover:text-red-600 cursor-pointer"
                   >
                     إلغاء
                   </button>
                 )}
               </div>
 
+              {seriesParentId && !editingSeriesId && (
+                <div className="rounded-xl bg-[#EBF4EE] border border-[#C8DFCF] px-3.5 py-2.5 text-xs text-[#2E5741] flex items-center gap-2">
+                  <FolderPlus className="w-4 h-4 shrink-0 text-[#3D6B52]" />
+                  <span>
+                    سيتم إنشاء هذه القائمة داخل:{" "}
+                    <strong>{getSeriesPathLabel(data.series, seriesParentId)}</strong>
+                  </span>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-semibold mb-1">اسم السلسلة *</label>
+                <label className="block text-xs font-semibold mb-1">
+                  اسم القائمة / السلسلة *
+                </label>
                 <input
                   type="text"
                   required
                   value={seriesTitle}
                   onChange={(e) => setSeriesTitle(e.target.value)}
-                  placeholder="مثال: شرح كتاب التوحيد"
+                  placeholder={
+                    seriesParentId
+                      ? "مثال: سورة البقرة، أو السنة 2024"
+                      : "مثال: تفسير القرآن، أو رمضان"
+                  }
                   className="w-full px-3.5 py-2 rounded-xl border border-[#EBC6DD] text-sm focus:outline-none focus:border-[#8E3A7A]"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1">
+                  القائمة الرئيسية (الأب) — اختياري
+                </label>
+                <select
+                  value={seriesParentId}
+                  onChange={(e) => {
+                    const nextParentId = e.target.value;
+                    setSeriesParentId(nextParentId);
+                    if (nextParentId) {
+                      const parent = data.series.find((s) => s.id === nextParentId);
+                      if (parent) setSeriesCategory(parent.category);
+                    }
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-[#EBC6DD] text-sm bg-white focus:outline-none focus:border-[#8E3A7A]"
+                >
+                  <option value="">قائمة رئيسية (في المستوى الأول)</option>
+                  {availableParentOptions.map((item) => (
+                    <option key={item.series.id} value={item.series.id}>
+                      {item.depth > 0 ? `${"— ".repeat(item.depth)}↳ ` : ""}
+                      {item.series.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-[#6E4E65] mt-1">
+                  اتركه كـ «قائمة رئيسية» لقسم مستقل، أو اختر قائمة رئيسية لإنشاء ملف فرعي داخلها.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1238,10 +1334,11 @@ export function AdminDashboardClient({
                     onChange={(e) => setSeriesAccent(e.target.value as Series["coverAccent"])}
                     className="w-full px-3 py-2 rounded-xl border border-[#EBC6DD] text-sm bg-white"
                   >
-                    <option value="emerald">أرجواني داكن (#8E3A7A)</option>
-                    <option value="gold">وردي متوسط (#B8559B)</option>
-                    <option value="teal">وردي ناعم (#D68FBF)</option>
-                    <option value="slate">بنفسجي عميق</option>
+                    <option value="emerald">أخضر طبيعي وبنفسجي</option>
+                    <option value="sage">أخضر هادئ (#3D6B52)</option>
+                    <option value="purple">بنفسجي داكن (#8E3A7A)</option>
+                    <option value="rose">وردي بنفسجي (#B8559B)</option>
+                    <option value="plum">أرجواني عميق</option>
                   </select>
                 </div>
 
@@ -1257,7 +1354,7 @@ export function AdminDashboardClient({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold mb-1">وصف السلسلة</label>
+                <label className="block text-xs font-semibold mb-1">وصف القائمة / السلسلة</label>
                 <textarea
                   rows={3}
                   value={seriesDescription}
@@ -1272,55 +1369,121 @@ export function AdminDashboardClient({
                 className="w-full py-3 rounded-xl bg-[#8E3A7A] hover:bg-[#6F2B5F] text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
               >
                 {savingSeries ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                <span>{editingSeriesId ? "حفظ تعديل السلسلة" : "إنشاء السلسلة"}</span>
+                <span>
+                  {editingSeriesId
+                    ? "حفظ التعديلات"
+                    : seriesParentId
+                    ? "إنشاء القائمة الفرعية"
+                    : "إنشاء القائمة"}
+                </span>
               </button>
             </form>
 
             <div className="lg:col-span-7 rounded-2xl border border-[#EBC6DD] bg-white p-6">
-              <h2 className="font-serif-arabic text-xl font-bold text-[#2D1626] mb-4">
-                السلاسل الحالية ({data.series.length})
-              </h2>
-              <div className="space-y-3">
-                {data.series.map((s) => {
-                  const count = data.lessons.filter((l) => l.seriesId === s.id).length;
-                  return (
-                    <div
-                      key={s.id}
-                      className="rounded-xl border border-[#EBC6DD] p-4 flex items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-xs mb-1">
-                          <span className="px-2 py-0.5 rounded-full bg-[#EBC6DD]/40 text-[#8E3A7A] font-medium">
-                            {s.category}
-                          </span>
-                          <span className="text-[#6E4E65]">{count} دروس</span>
-                          <span className="text-[#6E4E65]">
-                            • {s.status === "completed" ? "مكتملة" : "مستمرة"}
-                          </span>
-                        </div>
-                        <p className="font-bold text-[#2D1626]">{s.title}</p>
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => startEditSeries(s)}
-                          className="p-2 rounded-lg text-[#6E4E65] hover:bg-[#FAF3F6] cursor-pointer"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSeries(s.id)}
-                          className="p-2 rounded-lg text-red-600 hover:bg-red-50 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <div>
+                  <h2 className="font-serif-arabic text-xl font-bold text-[#2D1626]">
+                    هيكل القوائم والسلاسل ({data.series.length})
+                  </h2>
+                  <p className="text-xs text-[#6E4E65] mt-0.5">
+                    اضغط على «+ فرعي» بجانب أي قائمة لإنشاء قائمة فرعية داخلها مباشرة.
+                  </p>
+                </div>
               </div>
+
+              {flattenedSeries.length === 0 ? (
+                <p className="text-sm text-[#6E4E65] py-10 text-center">
+                  لا توجد قوائم بعد. أنشئ أول قائمة من النموذج المجاور.
+                </p>
+              ) : (
+                <div className="space-y-2.5">
+                  {flattenedSeries.map(({ series: s, depth }) => {
+                    const directLessons = data.lessons.filter((l) => l.seriesId === s.id).length;
+                    const subFoldersCount = data.series.filter((c) => (c.parentId || null) === s.id).length;
+
+                    return (
+                      <div
+                        key={s.id}
+                        style={{ marginRight: `${Math.min(depth, 4) * 24}px` }}
+                        className={`rounded-xl border p-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 transition-colors ${
+                          depth === 0
+                            ? "border-[#EBC6DD] bg-white"
+                            : "border-[#C8DFCF] bg-[#F8FBF9]"
+                        }`}
+                      >
+                        <div className="min-w-0 flex items-start gap-2.5">
+                          <div
+                            className={`mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              depth === 0
+                                ? "bg-[#FAF3F6] text-[#8E3A7A]"
+                                : "bg-[#EBF4EE] text-[#2E5741]"
+                            }`}
+                          >
+                            {depth === 0 ? (
+                              <Folder className="w-4 h-4" />
+                            ) : (
+                              <CornerDownLeft className="w-4 h-4" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] mb-1">
+                              <span
+                                className={`px-2 py-0.5 rounded-full font-medium ${
+                                  depth === 0
+                                    ? "bg-[#EBC6DD]/40 text-[#8E3A7A]"
+                                    : "bg-[#EBF4EE] text-[#2E5741]"
+                                }`}
+                              >
+                                {depth === 0 ? "قائمة رئيسية" : `قائمة فرعية (مستوى ${depth + 1})`}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full bg-[#FAF3F6] text-[#5C3D55] border border-[#EAD5E1]">
+                                {s.category}
+                              </span>
+                              <span className="text-[#6E4E65]">{directLessons} دروس</span>
+                              {subFoldersCount > 0 && (
+                                <span className="text-[#2E5741] font-semibold">
+                                  • {subFoldersCount} قوائم فرعية
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-bold text-sm sm:text-base text-[#2D1626] truncate">
+                              {s.title}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => startCreateSubSeries(s)}
+                            title="إضافة قائمة فرعية داخلها"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#EBF4EE] hover:bg-[#D9EBDF] text-[#2E5741] text-xs font-semibold transition-colors cursor-pointer"
+                          >
+                            <FolderPlus className="w-3.5 h-3.5" />
+                            <span>+ فرعي</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => startEditSeries(s)}
+                            title="تعديل"
+                            className="p-2 rounded-lg text-[#6E4E65] hover:bg-[#FAF3F6] cursor-pointer"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSeries(s.id)}
+                            title="حذف"
+                            className="p-2 rounded-lg text-red-600 hover:bg-red-50 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1332,7 +1495,7 @@ export function AdminDashboardClient({
             className="max-w-2xl rounded-2xl border border-[#EBC6DD] bg-white p-6 space-y-4"
           >
             <h2 className="font-serif-arabic text-2xl font-bold text-[#8E3A7A]">
-              إعدادات الموقع والداعية
+              إعدادات الموقع والأستاذة
             </h2>
 
             <div>
@@ -1347,7 +1510,7 @@ export function AdminDashboardClient({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold mb-1">اسم الداعية / المتحدث</label>
+              <label className="block text-xs font-semibold mb-1">اسم الأستاذة / المتحدث</label>
               <input
                 type="text"
                 required

@@ -2,7 +2,7 @@
 
 :root {
   --font-amiri: "Amiri", Georgia, serif;
-  --font-ibm-arabic: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
+  --font-tajawal: "Tajawal", "Segoe UI", Tahoma, sans-serif;
 
   /* Natural Purple, Pink & Botanical Sage Palette (الهوية البصرية المتكاملة) */
   --color-primary-dark: #8E3A7A;   /* البنفسجي الداكن: العناوين والعناصر القيادية */
@@ -12,8 +12,10 @@
   --color-bg-main: #FAF3F6;        /* الأبيض الزهري: الخلفية الرئيسية للمنصة */
 
   /* Botanical Natural Green (درجات الأخضر الطبيعي الهادئ) */
+  --color-sage-dark: #2E5741;      /* الأخضر العميق: العناوين والأيقونات الإيمانية */
   --color-sage-green: #3D6B52;     /* الأخضر الزيتوني/المريمي: وسوم القرآن وحالات الإنجاز */
   --color-sage-soft: #EBF4EE;      /* الأخضر الفاتح الهادئ: خلفيات الوسوم الإيمانية */
+  --color-sage-border: #C8DFCF;    /* حدود خضراء ناعمة */
 
   /* Text & Ink Tokens */
   --ink-primary: #2B1626;          /* لون النص الأساسي المقروء والمريح */
@@ -37,7 +39,7 @@
   body {
     background-color: var(--color-bg-main);
     color: var(--ink-primary);
-    font-family: var(--font-ibm-arabic), "Segoe UI", Tahoma, sans-serif;
+    font-family: var(--font-tajawal), "Segoe UI", Tahoma, sans-serif;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }

@@ -27,10 +27,7 @@ export function LogoAnzalahu({ variant = "header", className = "" }: LogoProps) 
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
             <span className="font-serif-arabic text-xl font-bold text-[#8E3A7A] tracking-tight leading-tight">
-              أ. فاطمة حجازي
-            </span>
-            <span className="hidden lg:inline-flex text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#EBF4EE] border border-[#3D6B52]/20 text-[#3D6B52]">
-              أنزله بعلمه
+              الأستاذة فاطمة حجازي
             </span>
           </div>
           <span className="text-[11px] text-[#6E4E65] font-medium leading-tight hidden sm:block">
@@ -69,7 +66,7 @@ export function LogoAnzalahu({ variant = "header", className = "" }: LogoProps) 
       </div>
       <div>
         <div className="font-serif-arabic text-lg font-bold text-[#8E3A7A] leading-tight">
-          الداعية أ. فاطمة حجازي
+          الأستاذة فاطمة حجازي
         </div>
         <div className="text-xs text-[#6E4E65] font-serif-arabic">
           «أنزله بعلمه» — منصة الدروس والشروحات المنهجية

@@ -4,7 +4,7 @@ import { SeriesPageDynamicClient } from "@/components/SeriesPageDynamicClient";
 
 export function generateStaticParams() {
   const ids = new Set<string>(["placeholder", "waqfa-maa-ayah", "ser-waqfa"]);
-  for (const s of fallbackData.series) {
+  for (const s of fallbackData.series as Array<{ id: string; slug: string }>) {
     ids.add(s.id);
     ids.add(s.slug);
   }

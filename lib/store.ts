@@ -13,6 +13,7 @@ import {
   type SiteSettings,
 } from "./types";
 import { createSlug } from "./format";
+import { getDescendantSeriesIds } from "./seriesTree";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
@@ -56,10 +57,10 @@ export function toPublicAdminUser(record: AdminUserRecord): AdminUser {
 const DEFAULT_DATA: DatabasePayload = {
   settings: {
     id: "main",
-    siteName: "مكتبة الداعية فاطمة",
-    sheikhName: "الداعية فاطمة",
+    siteName: "مكتبة الأستاذة فاطمة",
+    sheikhName: "الأستاذة فاطمة",
     sheikhTitle: "الدروس العلمية والشروحات المنهجية والمحاضرات الصوتية",
-    bio: "منصة علمية دعوية مخصصة لنشر الدروس الصوتية المرتبة للداعية فاطمة في العقيدة والتفسير والفقه والرقائق والتربية، متاحة للاستماع المباشر والتحميل المجاني.",
+    bio: "منصة علمية دعوية مخصصة لنشر الدروس الصوتية المرتبة للأستاذة فاطمة في العقيدة والتفسير والفقه والرقائق والتربية، متاحة للاستماع المباشر والتحميل المجاني.",
     telegramUrl: "https://t.me/",
     youtubeUrl: "",
     whatsappUrl: "",
@@ -302,17 +303,40 @@ function mapSupabaseSettings(row: Record<string, unknown> | null): SiteSettings 
   };
 }
 
+const VALID_COVER_ACCENTS = new Set([
+  "purple",
+  "rose",
+  "plum",
+  "blush",
+  "sage",
+  "emerald",
+  "gold",
+  "teal",
+  "slate",
+]);
+
+let d1ParentIdEnsured = false;
+async function ensureD1SeriesParentIdColumn(): Promise<void> {
+  if (d1ParentIdEnsured || !isD1Configured()) return;
+  try {
+    await queryCloudflareD1("ALTER TABLE series ADD COLUMN parent_id TEXT");
+  } catch {
+    // Column already exists — safe to ignore
+  }
+  d1ParentIdEnsured = true;
+}
+
 function mapSupabaseSeries(row: Record<string, unknown>): Series {
+  const accent = String(row.cover_accent ?? "emerald");
   return {
     id: String(row.id),
     title: String(row.title),
     slug: String(row.slug),
+    parentId: row.parent_id ? String(row.parent_id) : null,
     category: String(row.category ?? "عام"),
     description: String(row.description ?? ""),
     status: row.status === "completed" ? "completed" : "ongoing",
-    coverAccent: (["emerald", "gold", "teal", "slate"].includes(String(row.cover_accent))
-      ? String(row.cover_accent)
-      : "emerald") as Series["coverAccent"],
+    coverAccent: (VALID_COVER_ACCENTS.has(accent) ? accent : "emerald") as Series["coverAccent"],
     sortOrder: Number(row.sort_order ?? 0),
     createdAt: String(row.created_at ?? new Date().toISOString()),
   };
@@ -484,6 +508,7 @@ export async function updateSettings(input: Partial<SiteSettings>): Promise<Site
 
 export async function createSeries(input: {
   title: string;
+  parentId?: string | null;
   category: string;
   description?: string;
   status?: Series["status"];
@@ -492,10 +517,12 @@ export async function createSeries(input: {
 }): Promise<Series> {
   const id = `ser-${crypto.randomBytes(5).toString("hex")}`;
   const slug = `${createSlug(input.title)}-${id.slice(-4)}`;
+  const normalizedParentId = input.parentId && String(input.parentId).trim() ? String(input.parentId).trim() : null;
   const item: Series = {
     id,
     title: input.title.trim(),
     slug,
+    parentId: normalizedParentId,
     category: input.category.trim() || "عام",
     description: (input.description || "").trim(),
     status: input.status === "completed" ? "completed" : "ongoing",
@@ -505,13 +532,15 @@ export async function createSeries(input: {
   };
 
   if (isD1Configured()) {
+    await ensureD1SeriesParentIdColumn();
     await queryCloudflareD1(
-      `INSERT INTO series (id, title, slug, category, description, status, cover_accent, sort_order, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+      `INSERT INTO series (id, title, slug, parent_id, category, description, status, cover_accent, sort_order, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
       [
         item.id,
         item.title,
         item.slug,
+        item.parentId ?? null,
         item.category,
         item.description,
         item.status,
@@ -526,6 +555,9 @@ export async function createSeries(input: {
   if (!isSupabaseConfigured()) {
     return withLocalDbLock(async () => {
       const db = await readLocalDb();
+      if (item.parentId && !db.series.some((s) => s.id === item.parentId)) {
+        item.parentId = null;
+      }
       db.series.push(item);
       await writeLocalDb(db);
       return item;
@@ -533,18 +565,22 @@ export async function createSeries(input: {
   }
 
   const supabase = getSupabase();
+  const insertPayload: Record<string, unknown> = {
+    id: item.id,
+    title: item.title,
+    slug: item.slug,
+    category: item.category,
+    description: item.description,
+    status: item.status,
+    cover_accent: item.coverAccent,
+    sort_order: item.sortOrder,
+  };
+  if (item.parentId !== undefined) {
+    insertPayload.parent_id = item.parentId;
+  }
   const { data, error } = await supabase
     .from("series")
-    .insert({
-      id: item.id,
-      title: item.title,
-      slug: item.slug,
-      category: item.category,
-      description: item.description,
-      status: item.status,
-      cover_accent: item.coverAccent,
-      sort_order: item.sortOrder,
-    })
+    .insert(insertPayload)
     .select("*")
     .single();
   if (error) throw new Error(error.message);
@@ -553,23 +589,46 @@ export async function createSeries(input: {
 
 export async function updateSeries(
   id: string,
-  input: Partial<Pick<Series, "title" | "category" | "description" | "status" | "coverAccent" | "sortOrder">>
+  input: Partial<Pick<Series, "title" | "parentId" | "category" | "description" | "status" | "coverAccent" | "sortOrder">>
 ): Promise<Series | null> {
+  const normalizedParentId =
+    input.parentId !== undefined
+      ? input.parentId && String(input.parentId).trim()
+        ? String(input.parentId).trim()
+        : null
+      : undefined;
+
+  if (normalizedParentId === id) {
+    throw new Error("لا يمكن جعل السلسلة قائمة فرعية لنفسها");
+  }
+
   if (isD1Configured()) {
-    const existingRows = await queryCloudflareD1("SELECT * FROM series WHERE id = ?1 LIMIT 1", [id]);
-    if (!existingRows[0]) return null;
-    const current = mapSupabaseSeries(existingRows[0]);
+    await ensureD1SeriesParentIdColumn();
+    const allRows = await queryCloudflareD1("SELECT * FROM series");
+    const allSeries = allRows.map(mapSupabaseSeries);
+    const current = allSeries.find((s) => s.id === id);
+    if (!current) return null;
+
+    if (normalizedParentId) {
+      const descendants = getDescendantSeriesIds(allSeries, id);
+      if (descendants.has(normalizedParentId)) {
+        throw new Error("لا يمكن نقل القائمة داخل إحدى قوائمها الفرعية");
+      }
+    }
+
     const updated: Series = {
       ...current,
       ...input,
+      parentId: normalizedParentId !== undefined ? normalizedParentId : (current.parentId ?? null),
       title: input.title !== undefined ? input.title.trim() : current.title,
       category: input.category !== undefined ? input.category.trim() : current.category,
       description: input.description !== undefined ? input.description.trim() : current.description,
     };
     await queryCloudflareD1(
-      `UPDATE series SET title = ?1, category = ?2, description = ?3, status = ?4, cover_accent = ?5, sort_order = ?6 WHERE id = ?7`,
+      `UPDATE series SET title = ?1, parent_id = ?2, category = ?3, description = ?4, status = ?5, cover_accent = ?6, sort_order = ?7 WHERE id = ?8`,
       [
         updated.title,
+        updated.parentId ?? null,
         updated.category,
         updated.description,
         updated.status,
@@ -586,9 +645,21 @@ export async function updateSeries(
       const db = await readLocalDb();
       const idx = db.series.findIndex((s) => s.id === id);
       if (idx === -1) return null;
+
+      if (normalizedParentId) {
+        const descendants = getDescendantSeriesIds(db.series, id);
+        if (descendants.has(normalizedParentId)) {
+          throw new Error("لا يمكن نقل القائمة داخل إحدى قوائمها الفرعية");
+        }
+      }
+
       db.series[idx] = {
         ...db.series[idx],
         ...input,
+        parentId:
+          normalizedParentId !== undefined
+            ? normalizedParentId
+            : (db.series[idx].parentId ?? null),
         title: input.title !== undefined ? input.title.trim() : db.series[idx].title,
         category: input.category !== undefined ? input.category.trim() : db.series[idx].category,
         description: input.description !== undefined ? input.description.trim() : db.series[idx].description,
@@ -599,8 +670,18 @@ export async function updateSeries(
   }
 
   const supabase = getSupabase();
+  if (normalizedParentId) {
+    const { data: allRows } = await supabase.from("series").select("*");
+    const allSeries = (allRows || []).map(mapSupabaseSeries);
+    const descendants = getDescendantSeriesIds(allSeries, id);
+    if (descendants.has(normalizedParentId)) {
+      throw new Error("لا يمكن نقل القائمة داخل إحدى قوائمها الفرعية");
+    }
+  }
+
   const patch: Record<string, unknown> = {};
   if (input.title !== undefined) patch.title = input.title.trim();
+  if (normalizedParentId !== undefined) patch.parent_id = normalizedParentId;
   if (input.category !== undefined) patch.category = input.category.trim();
   if (input.description !== undefined) patch.description = input.description.trim();
   if (input.status !== undefined) patch.status = input.status;
@@ -614,6 +695,10 @@ export async function updateSeries(
 
 export async function deleteSeries(id: string): Promise<boolean> {
   if (isD1Configured()) {
+    await ensureD1SeriesParentIdColumn();
+    const existing = await queryCloudflareD1("SELECT parent_id FROM series WHERE id = ?1 LIMIT 1", [id]);
+    const grandParentId = existing[0]?.parent_id ? String(existing[0].parent_id) : null;
+    await queryCloudflareD1("UPDATE series SET parent_id = ?1 WHERE parent_id = ?2", [grandParentId, id]);
     await queryCloudflareD1("UPDATE lessons SET series_id = NULL WHERE series_id = ?1", [id]);
     await queryCloudflareD1("DELETE FROM series WHERE id = ?1", [id]);
     return true;
@@ -622,16 +707,22 @@ export async function deleteSeries(id: string): Promise<boolean> {
   if (!isSupabaseConfigured()) {
     return withLocalDbLock(async () => {
       const db = await readLocalDb();
-      const before = db.series.length;
-      db.series = db.series.filter((s) => s.id !== id);
+      const target = db.series.find((s) => s.id === id);
+      if (!target) return false;
+      const grandParentId = target.parentId ?? null;
+      db.series = db.series
+        .filter((s) => s.id !== id)
+        .map((s) => (s.parentId === id ? { ...s, parentId: grandParentId } : s));
       db.lessons = db.lessons.map((l) => (l.seriesId === id ? { ...l, seriesId: null } : l));
-      if (db.series.length === before) return false;
       await writeLocalDb(db);
       return true;
     });
   }
 
   const supabase = getSupabase();
+  const { data: targetRow } = await supabase.from("series").select("parent_id").eq("id", id).maybeSingle();
+  const grandParentId = targetRow?.parent_id ?? null;
+  await supabase.from("series").update({ parent_id: grandParentId }).eq("parent_id", id);
   const { error } = await supabase.from("series").delete().eq("id", id);
   if (error) throw new Error(error.message);
   return true;

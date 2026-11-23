@@ -22,6 +22,7 @@ export async function POST(request: Request) {
     }
     const created = await createSeries({
       title: String(body.title),
+      parentId: body.parentId ? String(body.parentId) : null,
       category: String(body.category || "عام"),
       description: String(body.description || ""),
       status: body.status === "completed" ? "completed" : "ongoing",
