@@ -95,7 +95,7 @@ export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRow
             </span>
             {series && (
               <Link
-                href={`/series/${series.slug}`}
+                href={`/series/${series.id}`}
                 className="text-[#6E4E65] hover:text-[#8E3A7A] font-medium truncate max-w-[220px]"
               >
                 سلسلة: {series.title}

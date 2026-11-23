@@ -100,7 +100,7 @@ export function SeriesDetailClient({
                 <React.Fragment key={ancestor.id}>
                   <ChevronLeft className="w-3.5 h-3.5 text-[#D68FBF]" />
                   <Link
-                    href={`/series/${ancestor.slug}`}
+                    href={`/series/${ancestor.id}`}
                     className="text-[#2E5741] hover:text-[#8E3A7A] transition-colors"
                   >
                     {ancestor.title}
@@ -234,7 +234,7 @@ export function SeriesDetailClient({
               return (
                 <Link
                   key={child.id}
-                  href={`/series/${child.slug}`}
+                  href={`/series/${child.id}`}
                   className="group rounded-2xl border border-[#EAD5E1] bg-white p-5 hover:border-[#3D6B52] hover:shadow-[0_10px_28px_rgba(61,107,82,0.09)] transition-all flex flex-col justify-between"
                 >
                   <div>

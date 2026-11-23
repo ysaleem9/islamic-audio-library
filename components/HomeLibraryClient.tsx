@@ -387,7 +387,7 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
                               return (
                                 <Link
                                   key={s.id}
-                                  href={`/series/${s.slug}`}
+                                  href={`/series/${s.id}`}
                                   className="group flex items-center justify-between gap-2.5 p-2.5 rounded-xl border border-[#EAD5E1]/80 bg-[#FAF3F6]/40 hover:bg-[#EBF4EE]/60 hover:border-[#3D6B52]/50 transition-colors"
                                 >
                                   <div className="min-w-0">
@@ -712,7 +712,7 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
               return (
                 <Link
                   key={series.id}
-                  href={`/series/${series.slug}`}
+                  href={`/series/${series.id}`}
                   className="group rounded-3xl border border-[#EAD5E1] bg-white overflow-hidden hover:border-[#8E3A7A]/70 hover:shadow-[0_12px_32px_rgba(142,58,122,0.09)] transition-all flex flex-col"
                 >
                   {/* Decorative Top Bar */}

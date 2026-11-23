@@ -8,19 +8,48 @@ import { Footer } from "./Footer";
 import { SeriesDetailClient } from "./SeriesDetailClient";
 import fallbackData from "@/data/db.json";
 
+function safeDecode(value: string): string {
+  let out = value;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const next = decodeURIComponent(out);
+      if (next === out) break;
+      out = next;
+    } catch {
+      break;
+    }
+  }
+  return out.normalize("NFC").trim();
+}
+
+function extractSeriesSegment(pathStr: string | null | undefined, fallbackId: string): string {
+  const parts = (pathStr || "").split("/").filter(Boolean);
+  const raw = parts.length >= 2 && parts[0] === "series" ? parts[1] : fallbackId;
+  return safeDecode(raw.replace(/\.html$/i, ""));
+}
+
 export function SeriesPageDynamicClient({ initialId }: { initialId: string }) {
   const pathname = usePathname();
+  const [browserPath, setBrowserPath] = useState<string>("");
   const [data, setData] = useState<DatabasePayload>(fallbackData as unknown as DatabasePayload);
 
+  // Always sync with the actual browser URL (critical when Cloudflare Worker serves placeholder.html)
+  useEffect(() => {
+    const syncPath = () => {
+      if (typeof window !== "undefined") {
+        setBrowserPath(window.location.pathname);
+      }
+    };
+    syncPath();
+    window.addEventListener("popstate", syncPath);
+    return () => window.removeEventListener("popstate", syncPath);
+  }, [pathname]);
+
   const effectiveId = useMemo(() => {
-    const parts = (pathname || "").split("/").filter(Boolean);
-    const fromUrl = parts.length >= 2 && parts[0] === "series" ? parts[1] : initialId;
-    try {
-      return decodeURIComponent(fromUrl);
-    } catch {
-      return fromUrl;
-    }
-  }, [pathname, initialId]);
+    const activePath =
+      browserPath && !browserPath.endsWith("/placeholder") ? browserPath : pathname;
+    return extractSeriesSegment(activePath, initialId);
+  }, [browserPath, pathname, initialId]);
 
   useEffect(() => {
     fetch("/api/data", { cache: "no-store" })
@@ -33,13 +62,18 @@ export function SeriesPageDynamicClient({ initialId }: { initialId: string }) {
       .catch(() => undefined);
   }, []);
 
-  const series = useMemo(
-    () =>
-      data.series.find((s) => s.id === effectiveId || s.slug === effectiveId) ||
-      data.series[0] ||
-      null,
-    [data.series, effectiveId]
-  );
+  const series = useMemo(() => {
+    if (!effectiveId || effectiveId === "placeholder") {
+      return data.series[0] || null;
+    }
+    const found = data.series.find(
+      (s) =>
+        s.id === effectiveId ||
+        safeDecode(s.slug) === effectiveId ||
+        s.slug === effectiveId
+    );
+    return found || data.series[0] || null;
+  }, [data.series, effectiveId]);
 
   const lessons = useMemo(() => {
     if (!series) return [];

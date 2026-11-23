@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fatima-audio-library",
+  "main": "cloudflare/worker.mjs",
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "fatimahijazi.com", "custom_domain": true },
+    { "pattern": "www.fatimahijazi.com", "custom_domain": true }
+  ],
+  "compatibility_date": "2025-02-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "out",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fatima-audio-db",
+      "database_id": "8c05913f-0451-4666-b720-154df952c173"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "AUDIO_BUCKET",
+      "bucket_name": "msfatimawebsite"
+    }
+  ],
+  "vars": {
+    "R2_PUBLIC_URL": "https://audio.fatimahijazi.com"
+  }
+}

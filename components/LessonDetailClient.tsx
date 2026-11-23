@@ -91,7 +91,7 @@ export function LessonDetailClient({
           <>
             <span className="text-[#EAD5E1]">/</span>
             <Link
-              href={`/series/${series.slug}`}
+              href={`/series/${series.id}`}
               className="hover:text-[#8E3A7A] font-semibold text-[#8E3A7A]"
             >
               سلسلة: {series.title}
@@ -125,7 +125,7 @@ export function LessonDetailClient({
             </span>
             {series && (
               <Link
-                href={`/series/${series.slug}`}
+                href={`/series/${series.id}`}
                 className="text-xs text-[#5C3D55] hover:text-[#8E3A7A] font-medium"
               >
                 تابع لسلسلة «{series.title}»
@@ -385,7 +385,7 @@ export function LessonDetailClient({
 
             {series && (
               <Link
-                href={`/series/${series.slug}`}
+                href={`/series/${series.id}`}
                 className="text-xs font-bold text-[#8E3A7A] hover:text-[#B8559B]"
               >
                 عرض فهرس السلسلة كاملة

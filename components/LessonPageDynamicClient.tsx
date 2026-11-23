@@ -8,19 +8,43 @@ import { Footer } from "./Footer";
 import { LessonDetailClient } from "./LessonDetailClient";
 import fallbackData from "@/data/db.json";
 
+function safeDecode(value: string): string {
+  let out = value;
+  for (let i = 0; i < 2; i++) {
+    try {
+      const next = decodeURIComponent(out);
+      if (next === out) break;
+      out = next;
+    } catch {
+      break;
+    }
+  }
+  return out.normalize("NFC").trim();
+}
+
 export function LessonPageDynamicClient({ initialId }: { initialId: string }) {
   const pathname = usePathname();
+  const [browserPath, setBrowserPath] = useState<string>("");
   const [data, setData] = useState<DatabasePayload>(fallbackData as unknown as DatabasePayload);
 
+  useEffect(() => {
+    const syncPath = () => {
+      if (typeof window !== "undefined") {
+        setBrowserPath(window.location.pathname);
+      }
+    };
+    syncPath();
+    window.addEventListener("popstate", syncPath);
+    return () => window.removeEventListener("popstate", syncPath);
+  }, [pathname]);
+
   const effectiveId = useMemo(() => {
-    const parts = (pathname || "").split("/").filter(Boolean);
+    const activePath =
+      browserPath && !browserPath.endsWith("/placeholder") ? browserPath : pathname;
+    const parts = (activePath || "").split("/").filter(Boolean);
     const fromUrl = parts.length >= 2 && parts[0] === "lessons" ? parts[1] : initialId;
-    try {
-      return decodeURIComponent(fromUrl);
-    } catch {
-      return fromUrl;
-    }
-  }, [pathname, initialId]);
+    return safeDecode(fromUrl.replace(/\.html$/i, ""));
+  }, [browserPath, pathname, initialId]);
 
   useEffect(() => {
     fetch("/api/data", { cache: "no-store" })
