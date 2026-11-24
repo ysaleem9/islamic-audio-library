@@ -23,6 +23,7 @@ import type { Lesson, Series } from "@/lib/types";
 import { useAudioPlayer } from "./AudioPlayerContext";
 import { LessonRow } from "./LessonRow";
 import { formatArabicDate, formatDuration } from "@/lib/format";
+import { ShareMenu } from "./ShareMenu";
 
 export function LessonDetailClient({
   lesson,
@@ -257,23 +258,13 @@ export function LessonDetailClient({
                   </a>
                 )}
 
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-[#EAD5E1] bg-white text-xs font-semibold text-[#5C3D55] hover:text-[#8E3A7A] hover:bg-[#FAF3F6] transition-colors cursor-pointer shadow-2xs"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-[#8E3A7A]" />
-                      <span className="text-[#8E3A7A]">تم النسخ</span>
-                    </>
-                  ) : (
-                    <>
-                      <Share2 className="w-3.5 h-3.5 text-[#B8559B]" />
-                      <span>مشاركة</span>
-                    </>
-                  )}
-                </button>
+                <ShareMenu
+                  title={lesson.title}
+                  path={`/lessons/${lesson.id}`}
+                  label="مشاركة"
+                  variant="button"
+                  align="left"
+                />
               </div>
             </div>
           </div>

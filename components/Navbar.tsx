@@ -7,12 +7,10 @@ import {
   Headphones,
   Menu,
   X,
-  Sparkles,
-  Info,
   Grid,
-  ShieldCheck,
 } from "lucide-react";
 import { LogoAnzalahu } from "./LogoAnzalahu";
+import { NotificationBell } from "./NotificationBell";
 
 interface NavbarProps {
   siteName: string;
@@ -62,33 +60,15 @@ export function Navbar({ siteName }: NavbarProps) {
             <Headphones className="w-4 h-4 text-[#B8559B]" />
             <span>الدروس والمحاضرات</span>
           </Link>
-          <Link
-            href="/#about"
-            className="px-3.5 py-2 rounded-xl text-[#2B1626] font-medium hover:text-[#8E3A7A] hover:bg-[#EBC6DD]/40 transition-colors flex items-center gap-1.5"
-          >
-            <Info className="w-4 h-4 text-[#3D6B52]" />
-            <span>عن الأستاذة</span>
-          </Link>
 
-          {/* Admin link */}
-          <Link
-            href="/admin"
-            className="mr-2 px-3 py-1.5 rounded-xl border border-[#EAD5E1] bg-white/80 hover:bg-white text-[#8E3A7A] hover:border-[#8E3A7A] text-xs font-semibold transition-all flex items-center gap-1.5 shadow-xs"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#B8559B]" />
-            <span>لوحة التحكم</span>
-          </Link>
+          <div className="mr-1.5">
+            <NotificationBell />
+          </div>
         </nav>
 
-        {/* Mobile menu button */}
+        {/* Mobile menu button + Notifications Bell */}
         <div className="flex md:hidden items-center gap-2">
-          <Link
-            href="/admin"
-            className="p-2 rounded-xl border border-[#EAD5E1] bg-white text-[#8E3A7A]"
-            aria-label="لوحة التحكم"
-          >
-            <ShieldCheck className="w-4 h-4" />
-          </Link>
+          <NotificationBell />
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -134,14 +114,6 @@ export function Navbar({ siteName }: NavbarProps) {
             >
               <Headphones className="w-4 h-4 text-[#B8559B]" />
               <span>الدروس والمحاضرات</span>
-            </Link>
-            <Link
-              href="/#about"
-              onClick={() => setMobileMenuOpen(false)}
-              className="px-4 py-2.5 rounded-xl font-medium text-[#2B1626] hover:bg-[#EBC6DD]/40 hover:text-[#8E3A7A] flex items-center gap-2"
-            >
-              <Info className="w-4 h-4 text-[#3D6B52]" />
-              <span>نبذة عن الأستاذة فاطمة حجازي</span>
             </Link>
           </nav>
         </div>

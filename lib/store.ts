@@ -9,7 +9,9 @@ import {
   type AdminUserRecord,
   type DatabasePayload,
   type Lesson,
+  type NotificationType,
   type Series,
+  type SiteNotification,
   type SiteSettings,
 } from "./types";
 import { createSlug } from "./format";
@@ -274,6 +276,7 @@ async function readLocalDb(): Promise<LocalDatabaseFile> {
       settings: { ...DEFAULT_DATA.settings, ...(parsed.settings || {}) },
       series: Array.isArray(parsed.series) ? parsed.series : [],
       lessons: Array.isArray(parsed.lessons) ? parsed.lessons : [],
+      notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
       admins: Array.isArray(parsed.admins) ? parsed.admins : [],
     };
   } catch {
@@ -1294,4 +1297,141 @@ export async function deleteAdminUser(id: string): Promise<boolean> {
   const { error } = await supabase.from("admin_users").delete().eq("id", id);
   if (error) throw new Error(error.message);
   return true;
+}
+
+// ============================================================================
+// Notifications (إعلانات ولقاءات إيمانية مع مدة صلاحية بالأيام)
+// ============================================================================
+function mapD1Notification(row: Record<string, unknown>): SiteNotification {
+  return {
+    id: String(row.id),
+    type: row.type === "faith_meeting" ? "faith_meeting" : "announcement",
+    title: String(row.title ?? ""),
+    message: String(row.message ?? ""),
+    meetingDate: row.meeting_date ? String(row.meeting_date) : "",
+    meetingTime: row.meeting_time ? String(row.meeting_time) : "",
+    zoomUrl: row.zoom_url ? String(row.zoom_url) : "",
+    durationDays: Math.max(1, Number(row.duration_days ?? 7)),
+    expiresAt: String(row.expires_at ?? new Date().toISOString()),
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+  };
+}
+
+let d1NotificationsTableEnsured = false;
+async function ensureD1NotificationsTable(): Promise<void> {
+  if (d1NotificationsTableEnsured || !isD1Configured()) return;
+  await queryCloudflareD1(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL DEFAULT 'announcement',
+      title TEXT NOT NULL DEFAULT '',
+      message TEXT NOT NULL DEFAULT '',
+      meeting_date TEXT DEFAULT '',
+      meeting_time TEXT DEFAULT '',
+      zoom_url TEXT DEFAULT '',
+      duration_days INTEGER NOT NULL DEFAULT 7,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+  d1NotificationsTableEnsured = true;
+}
+
+export async function getNotifications(activeOnly = false): Promise<SiteNotification[]> {
+  let list: SiteNotification[] = [];
+
+  if (isD1Configured()) {
+    await ensureD1NotificationsTable();
+    const rows = await queryCloudflareD1(
+      "SELECT * FROM notifications ORDER BY created_at DESC"
+    );
+    list = rows.map(mapD1Notification);
+  } else {
+    const db = await readLocalDb();
+    list = Array.isArray(db.notifications) ? [...db.notifications] : [];
+    list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  if (activeOnly) {
+    const now = Date.now();
+    return list.filter((n) => new Date(n.expiresAt).getTime() > now);
+  }
+  return list;
+}
+
+export async function createNotification(input: {
+  type: NotificationType;
+  title?: string;
+  message?: string;
+  meetingDate?: string;
+  meetingTime?: string;
+  zoomUrl?: string;
+  durationDays?: number;
+  saveDefaultDays?: boolean;
+}): Promise<SiteNotification> {
+  const type: NotificationType = input.type === "faith_meeting" ? "faith_meeting" : "announcement";
+  const durationDays = Math.max(1, Math.min(365, Math.round(Number(input.durationDays || 7))));
+  const nowDate = new Date();
+  const createdAt = nowDate.toISOString();
+  const expiresAt = new Date(nowDate.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const item: SiteNotification = {
+    id: `ntf-${crypto.randomBytes(5).toString("hex")}`,
+    type,
+    title: String(input.title || "").trim(),
+    message: String(input.message || "").trim(),
+    meetingDate: String(input.meetingDate || "").trim(),
+    meetingTime: String(input.meetingTime || "").trim(),
+    zoomUrl: String(input.zoomUrl || "").trim(),
+    durationDays,
+    expiresAt,
+    createdAt,
+  };
+
+  if (isD1Configured()) {
+    await ensureD1NotificationsTable();
+    await queryCloudflareD1(
+      `INSERT INTO notifications (id, type, title, message, meeting_date, meeting_time, zoom_url, duration_days, expires_at, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+      [
+        item.id,
+        item.type,
+        item.title,
+        item.message,
+        item.meetingDate || "",
+        item.meetingTime || "",
+        item.zoomUrl || "",
+        item.durationDays,
+        item.expiresAt,
+        item.createdAt,
+      ]
+    );
+    return item;
+  }
+
+  return withLocalDbLock(async () => {
+    const db = await readLocalDb();
+    db.notifications = Array.isArray(db.notifications) ? db.notifications : [];
+    db.notifications.unshift(item);
+    if (input.saveDefaultDays) {
+      db.settings.notificationDefaultDays = durationDays;
+    }
+    await writeLocalDb(db);
+    return item;
+  });
+}
+
+export async function deleteNotification(id: string): Promise<boolean> {
+  if (isD1Configured()) {
+    await ensureD1NotificationsTable();
+    await queryCloudflareD1("DELETE FROM notifications WHERE id = ?1", [id]);
+    return true;
+  }
+
+  return withLocalDbLock(async () => {
+    const db = await readLocalDb();
+    db.notifications = (db.notifications || []).filter((n) => n.id !== id);
+    await writeLocalDb(db);
+    return true;
+  });
 }

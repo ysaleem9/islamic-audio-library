@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { EmailMessage } from "cloudflare:email";
 
 const COOKIE_NAME = "islamic_audio_admin_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
@@ -782,6 +783,230 @@ async function handleApi(request, env, url) {
       creator: "",
       files,
     });
+  }
+
+  if (path === "/api/notifications") {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL DEFAULT 'announcement',
+        title TEXT NOT NULL DEFAULT '',
+        message TEXT NOT NULL DEFAULT '',
+        meeting_date TEXT DEFAULT '',
+        meeting_time TEXT DEFAULT '',
+        zoom_url TEXT DEFAULT '',
+        duration_days INTEGER NOT NULL DEFAULT 7,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`
+    ).run();
+
+    if (method === "GET") {
+      const activeOnly = url.searchParams.get("active") === "1";
+      const res = await env.DB.prepare("SELECT * FROM notifications ORDER BY created_at DESC").all();
+      let items = (res.results || []).map((row) => ({
+        id: String(row.id),
+        type: row.type === "faith_meeting" ? "faith_meeting" : "announcement",
+        title: String(row.title ?? ""),
+        message: String(row.message ?? ""),
+        meetingDate: row.meeting_date ? String(row.meeting_date) : "",
+        meetingTime: row.meeting_time ? String(row.meeting_time) : "",
+        zoomUrl: row.zoom_url ? String(row.zoom_url) : "",
+        durationDays: Math.max(1, Number(row.duration_days ?? 7)),
+        expiresAt: String(row.expires_at ?? new Date().toISOString()),
+        createdAt: String(row.created_at ?? new Date().toISOString()),
+      }));
+      if (activeOnly) {
+        const now = Date.now();
+        items = items.filter((n) => new Date(n.expiresAt).getTime() > now);
+      }
+      return jsonResponse(items);
+    }
+
+    if (method === "POST") {
+      const session = await getAdminSession(request, env);
+      if (!session) return jsonResponse({ error: "غير مصرح" }, 401);
+      const body = await request.json();
+      const type = body.type === "faith_meeting" ? "faith_meeting" : "announcement";
+
+      if (type === "announcement" && !String(body.message || "").trim()) {
+        return jsonResponse({ error: "يرجى كتابة نص الإعلان" }, 400);
+      }
+      if (type === "faith_meeting") {
+        if (!String(body.title || "").trim()) {
+          return jsonResponse({ error: "يرجى إدخال عنوان اللقاء الإيماني" }, 400);
+        }
+        if (!String(body.meetingDate || "").trim() || !String(body.meetingTime || "").trim()) {
+          return jsonResponse({ error: "يرجى تحديد تاريخ ووقت اللقاء" }, 400);
+        }
+      }
+
+      const durationDays = Math.max(1, Math.min(365, Math.round(Number(body.durationDays || 7))));
+      const nowDate = new Date();
+      const createdAt = nowDate.toISOString();
+      const expiresAt = new Date(nowDate.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+      const item = {
+        id: `ntf-${crypto.randomBytes(5).toString("hex")}`,
+        type,
+        title: String(body.title || "").trim(),
+        message: String(body.message || "").trim(),
+        meetingDate: String(body.meetingDate || "").trim(),
+        meetingTime: String(body.meetingTime || "").trim(),
+        zoomUrl: String(body.zoomUrl || "").trim(),
+        durationDays,
+        expiresAt,
+        createdAt,
+      };
+
+      await env.DB.prepare(
+        `INSERT INTO notifications (id, type, title, message, meeting_date, meeting_time, zoom_url, duration_days, expires_at, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`
+      )
+        .bind(
+          item.id,
+          item.type,
+          item.title,
+          item.message,
+          item.meetingDate,
+          item.meetingTime,
+          item.zoomUrl,
+          item.durationDays,
+          item.expiresAt,
+          item.createdAt
+        )
+        .run();
+
+      return jsonResponse(item, 201);
+    }
+  }
+
+  const notifMatch = path.match(/^\/api\/notifications\/([^/]+)$/);
+  if (notifMatch && method === "DELETE") {
+    const session = await getAdminSession(request, env);
+    if (!session) return jsonResponse({ error: "غير مصرح" }, 401);
+    const id = decodeURIComponent(notifMatch[1]);
+    await env.DB.prepare("DELETE FROM notifications WHERE id = ?1").bind(id).run();
+    return jsonResponse({ ok: true });
+  }
+
+  if (path === "/api/contact" && method === "POST") {
+    const body = await request.json();
+    const category = String(body.category || "استفسار عام").trim();
+    const senderName = String(body.senderName || "").trim();
+    const senderEmail = String(body.senderEmail || "").trim();
+    const message = String(body.message || "").trim();
+
+    if (!senderEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail)) {
+      return jsonResponse({ error: "يرجى إدخال بريد إلكتروني صحيح" }, 400);
+    }
+    if (!message || message.length < 5) {
+      return jsonResponse({ error: "يرجى كتابة نص الرسالة بشكل واضح" }, 400);
+    }
+
+    const id = `msg-${crypto.randomBytes(5).toString("hex")}`;
+    const createdAt = new Date().toISOString();
+
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS contact_messages (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        sender_name TEXT NOT NULL DEFAULT '',
+        sender_email TEXT NOT NULL,
+        message TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`
+    ).run();
+
+    await env.DB.prepare(
+      `INSERT INTO contact_messages (id, category, sender_name, sender_email, message, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+    )
+      .bind(id, category, senderName, senderEmail, message, createdAt)
+      .run();
+
+    let emailSent = false;
+    let emailError = "";
+
+    // 1. Primary (100% Free): Native Cloudflare Workers send_email binding
+    if (env.CONTACT_EMAIL) {
+      try {
+        const fromAddr = "support@fatimahijazi.com";
+        const toAddr = "abdullah.abusalah@gmail.com";
+        const subjectText = `[${category}] رسالة جديدة من ${senderName || senderEmail}`;
+        const encodedSubject = `=?UTF-8?B?${Buffer.from(subjectText, "utf8").toString("base64")}?=`;
+        const encodedFromName = `=?UTF-8?B?${Buffer.from("منصة الأستاذة فاطمة حجازي", "utf8").toString("base64")}?=`;
+        const safeReplyTo = senderEmail.replace(/[\r\n<>]/g, "").trim();
+        const plainBody = [
+          `نوع الرسالة: ${category}`,
+          `الاسم: ${senderName || "غير محدد"}`,
+          `البريد الإلكتروني للمرسل: ${safeReplyTo}`,
+          `التاريخ: ${createdAt}`,
+          "",
+          "نص الرسالة:",
+          message,
+          "",
+          "----------------------------------------",
+          "يمكنك الضغط على «رد / Reply» مباشرة ليصل ردك إلى بريد المرسل الشخصي.",
+        ].join("\r\n");
+
+        const bodyBase64 = Buffer.from(plainBody, "utf8")
+          .toString("base64")
+          .replace(/(.{76})/g, "$1\r\n");
+
+        const rawMime = [
+          `From: ${encodedFromName} <${fromAddr}>`,
+          `To: <${toAddr}>`,
+          `Reply-To: <${safeReplyTo}>`,
+          `Subject: ${encodedSubject}`,
+          `Date: ${new Date().toUTCString()}`,
+          `Message-ID: <${id}@fatimahijazi.com>`,
+          `MIME-Version: 1.0`,
+          `Content-Type: text/plain; charset="utf-8"`,
+          `Content-Transfer-Encoding: base64`,
+          "",
+          bodyBase64,
+          "",
+        ].join("\r\n");
+
+        const emailMsg = new EmailMessage(fromAddr, toAddr, rawMime);
+        await env.CONTACT_EMAIL.send(emailMsg);
+        emailSent = true;
+      } catch (err) {
+        emailError = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    // 2. Fallback: Resend API if configured and native binding wasn't used
+    if (!emailSent && env.RESEND_API_KEY) {
+      const fromAddress =
+        env.CONTACT_FROM_EMAIL || "منصة أنزله بعلمه <noreply@fatimahijazi.com>";
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: ["support@fatimahijazi.com"],
+          reply_to: senderEmail,
+          subject: `[${category}] رسالة جديدة من ${senderName || senderEmail}`,
+          text: [
+            `نوع الرسالة: ${category}`,
+            `الاسم: ${senderName || "غير محدد"}`,
+            `البريد الإلكتروني للمرسل: ${senderEmail}`,
+            "",
+            "نص الرسالة:",
+            message,
+            "",
+            "— يمكنك الرد مباشرة على هذه الرسالة ليصل ردك إلى بريد المرسل الشخصي.",
+          ].join("\n"),
+        }),
+      });
+      emailSent = res.ok;
+    }
+
+    return jsonResponse({ ok: true, id, emailSent, ...(emailError ? { emailError } : {}) }, 201);
   }
 
   return jsonResponse({ error: "Not found" }, 404);

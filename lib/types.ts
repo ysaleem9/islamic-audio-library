@@ -7,6 +7,22 @@ export interface SiteSettings {
   telegramUrl: string;
   youtubeUrl: string;
   whatsappUrl: string;
+  notificationDefaultDays?: number;
+}
+
+export type NotificationType = "announcement" | "faith_meeting";
+
+export interface SiteNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  meetingDate?: string;
+  meetingTime?: string;
+  zoomUrl?: string;
+  durationDays: number;
+  expiresAt: string;
+  createdAt: string;
 }
 
 export type SeriesStatus = "ongoing" | "completed";
@@ -111,6 +127,7 @@ export interface DatabasePayload {
   settings: SiteSettings;
   series: Series[];
   lessons: Lesson[];
+  notifications?: SiteNotification[];
 }
 
 export const DEFAULT_CATEGORIES = [

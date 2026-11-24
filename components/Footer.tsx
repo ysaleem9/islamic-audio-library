@@ -1,12 +1,15 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { Send, ShieldCheck, Sparkles, BookOpen, Headphones, Grid, Info } from "lucide-react";
+import { Mail, Send, Sparkles, BookOpen, Headphones, Grid, Info } from "lucide-react";
 import type { SiteSettings } from "@/lib/types";
 import { LogoAnzalahu } from "./LogoAnzalahu";
+import { ContactModal } from "./ContactModal";
 
 export function Footer({ settings }: { settings: SiteSettings }) {
+  const [contactOpen, setContactOpen] = useState(false);
+
   return (
     <footer className="mt-24 border-t border-[#EAD5E1] bg-gradient-to-b from-[#FAF3F6] to-[#F5E6EE] pb-32 pt-14">
       <div className="max-w-6xl mx-auto px-4">
@@ -60,13 +63,23 @@ export function Footer({ settings }: { settings: SiteSettings }) {
                   <span>عن الأستاذة فاطمة حجازي</span>
                 </Link>
               </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setContactOpen(true)}
+                  className="hover:text-[#8E3A7A] transition-colors flex items-center gap-1.5 font-semibold text-[#8E3A7A] cursor-pointer"
+                >
+                  <Mail className="w-3.5 h-3.5 text-[#B8559B]" />
+                  <span>تواصل معنا</span>
+                </button>
+              </li>
             </ul>
           </div>
 
-          {/* Column 3: Communication & Management */}
+          {/* Column 3: Communication */}
           <div className="space-y-3">
             <h4 className="font-serif-arabic text-base font-bold text-[#8E3A7A]">
-              التواصل والإشراف
+              التواصل
             </h4>
             <ul className="space-y-2.5 text-xs sm:text-sm text-[#5C3D55]">
               {settings.telegramUrl ? (
@@ -84,13 +97,14 @@ export function Footer({ settings }: { settings: SiteSettings }) {
               ) : null}
 
               <li>
-                <Link
-                  href="/admin"
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[#EAD5E1] bg-white/70 text-[#6E4E65] hover:text-[#8E3A7A] hover:bg-white text-xs font-medium transition-all"
+                <button
+                  type="button"
+                  onClick={() => setContactOpen(true)}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#EBF4EE] border border-[#C8DFCF] text-[#2E5741] hover:bg-[#D9EBDF] font-semibold transition-all shadow-2xs cursor-pointer"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#B8559B]" />
-                  <span>لوحة إدارة المنصة</span>
-                </Link>
+                  <Mail className="w-3.5 h-3.5 text-[#3D6B52]" />
+                  <span>تواصل معنا عبر البريد</span>
+                </button>
               </li>
             </ul>
           </div>
@@ -106,6 +120,8 @@ export function Footer({ settings }: { settings: SiteSettings }) {
           </div>
         </div>
       </div>
+
+      <ContactModal open={contactOpen} onClose={() => setContactOpen(false)} />
     </footer>
   );
 }

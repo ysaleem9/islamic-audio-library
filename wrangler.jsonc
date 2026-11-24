@@ -26,6 +26,12 @@
       "bucket_name": "msfatimawebsite"
     }
   ],
+  "send_email": [
+    {
+      "name": "CONTACT_EMAIL",
+      "destination_address": "abdullah.abusalah@gmail.com"
+    }
+  ],
   "vars": {
     "R2_PUBLIC_URL": "https://audio.fatimahijazi.com"
   }

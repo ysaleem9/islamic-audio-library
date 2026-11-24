@@ -5869,5 +5869,31 @@
       "createdAt": "2026-11-23T07:38:09.774Z"
     }
   ],
+  "notifications": [
+    {
+      "id": "ntf-d2403a1851",
+      "type": "faith_meeting",
+      "title": "شرح الاية الاخيرة من سورة البقرة",
+      "message": "",
+      "meetingDate": "2026-11-30",
+      "meetingTime": "20:00",
+      "zoomUrl": "https://scheduler.zoom.us/abdullah-abu-salah-0v1i7y/30-mins-with-abdullah",
+      "durationDays": 7,
+      "expiresAt": "2026-12-01T09:59:21.433Z",
+      "createdAt": "2026-11-24T09:59:21.433Z"
+    },
+    {
+      "id": "ntf-94ea875e76",
+      "type": "announcement",
+      "title": "درس خفيف",
+      "message": "نعلمكم بوجود ساعة دعاء",
+      "meetingDate": "",
+      "meetingTime": "",
+      "zoomUrl": "",
+      "durationDays": 7,
+      "expiresAt": "2026-12-01T09:56:06.201Z",
+      "createdAt": "2026-11-24T09:56:06.201Z"
+    }
+  ],
   "admins": []
 }

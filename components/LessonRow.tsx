@@ -1,20 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Link from "next/link";
 import {
-  Check,
   CheckCircle2,
   Clock,
   Download,
-  Headphones,
   Pause,
   Play,
-  Share2,
 } from "lucide-react";
 import type { Lesson, Series } from "@/lib/types";
 import { useAudioPlayer } from "./AudioPlayerContext";
 import { formatArabicDate, formatDuration } from "@/lib/format";
+import { ShareMenu } from "./ShareMenu";
 
 interface LessonRowProps {
   lesson: Lesson;
@@ -25,7 +23,6 @@ interface LessonRowProps {
 
 export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRowProps) {
   const { currentLesson, isPlaying, playLesson, progressMap } = useAudioPlayer();
-  const [copied, setCopied] = useState(false);
 
   const isCurrent = currentLesson?.id === lesson.id;
   const isThisPlaying = isCurrent && isPlaying;
@@ -34,17 +31,6 @@ export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRow
     progress && progress.duration > 0
       ? Math.min(100, Math.round((progress.time / progress.duration) * 100))
       : 0;
-
-  const handleShare = async () => {
-    const url = `${window.location.origin}/lessons/${lesson.id}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback
-    }
-  };
 
   // Check if category is related to Quran/Tafsir to use the soft botanical green badge
   const isQuranCategory = lesson.category.includes("تفسير") || lesson.category.includes("قرآن");
@@ -167,24 +153,13 @@ export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRow
                 </a>
               )}
 
-              <button
-                type="button"
-                onClick={handleShare}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[#6E4E65] hover:text-[#8E3A7A] hover:bg-[#FAF3F6] transition-colors cursor-pointer"
-                title="مشاركة رابط الدرس"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-[#8E3A7A]" />
-                    <span className="text-[#8E3A7A]">تم النسخ</span>
-                  </>
-                ) : (
-                  <>
-                    <Share2 className="w-3.5 h-3.5 text-[#B8559B]" />
-                    <span>مشاركة</span>
-                  </>
-                )}
-              </button>
+              <ShareMenu
+                title={lesson.title}
+                path={`/lessons/${lesson.id}`}
+                label="مشاركة"
+                variant="subtle"
+                align="left"
+              />
             </div>
           </div>
         </div>

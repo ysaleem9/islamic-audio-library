@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -11,12 +11,11 @@ import {
   FolderOpen,
   Layers,
   Play,
-  Share2,
-  Check,
 } from "lucide-react";
 import type { Lesson, Series } from "@/lib/types";
 import { useAudioPlayer } from "./AudioPlayerContext";
 import { LessonRow } from "./LessonRow";
+import { ShareMenu } from "./ShareMenu";
 import { formatTotalDurationArabic } from "@/lib/format";
 import {
   getDirectChildSeries,
@@ -38,7 +37,6 @@ export function SeriesDetailClient({
   sheikhName: string;
 }) {
   const { playLesson } = useAudioPlayer();
-  const [copied, setCopied] = useState(false);
 
   const ancestors = useMemo(
     () => getSeriesAncestors(allSeries, series.id),
@@ -62,16 +60,6 @@ export function SeriesDetailClient({
       totalDescendantsCount: childSeries.length,
     };
   }, [allSeries, allLessons, series.id, lessons, childSeries.length]);
-
-  const handleShareSeries = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback
-    }
-  };
 
   return (
     <main className="flex-1 pb-24">
@@ -112,23 +100,13 @@ export function SeriesDetailClient({
               <span className="text-[#5C3D55]">{series.title}</span>
             </nav>
 
-            <button
-              type="button"
-              onClick={handleShareSeries}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#EAD5E1] bg-white text-xs font-semibold text-[#8E3A7A] hover:bg-[#FAF3F6] transition-colors cursor-pointer shadow-2xs"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-[#2E5741]" />
-                  <span>تم نسخ الرابط</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-3.5 h-3.5 text-[#B8559B]" />
-                  <span>مشاركة القائمة</span>
-                </>
-              )}
-            </button>
+            <ShareMenu
+              title={series.title}
+              path={`/series/${series.id}`}
+              label="مشاركة القائمة"
+              variant="button"
+              align="left"
+            />
           </div>
 
           {/* Series Meta Badges */}

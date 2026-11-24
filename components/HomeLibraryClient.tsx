@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   BookOpen,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Headphones,
   Layers,
@@ -30,6 +32,7 @@ import {
   getRecursiveSeriesStats,
   getSeriesPathLabel,
 } from "@/lib/seriesTree";
+import { LogoAnzalahu } from "./LogoAnzalahu";
 
 const ACCENT_STYLES: Record<string, { bar: string; badge: string; iconBg: string }> = {
   purple: {
@@ -126,6 +129,12 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("الكل");
   const [lessonTab, setLessonTab] = useState<"all" | "single">("all");
+  const [lessonsPage, setLessonsPage] = useState(1);
+  const LESSONS_PER_PAGE = 10;
+
+  useEffect(() => {
+    setLessonsPage(1);
+  }, [searchQuery, selectedCategory, lessonTab]);
 
   const seriesMap = useMemo(() => {
     const m = new Map<string, Series>();
@@ -212,6 +221,20 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
 
   const latestLesson = data.lessons[0] || null;
 
+  const totalLessonsPages = Math.max(1, Math.ceil(filteredLessons.length / LESSONS_PER_PAGE));
+  const currentLessonsPage = Math.min(lessonsPage, totalLessonsPages);
+  const pageStartIdx = (currentLessonsPage - 1) * LESSONS_PER_PAGE;
+  const paginatedLessons = filteredLessons.slice(pageStartIdx, pageStartIdx + LESSONS_PER_PAGE);
+
+  const goToLessonsPage = (nextPage: number) => {
+    const clamped = Math.max(1, Math.min(totalLessonsPages, nextPage));
+    setLessonsPage(clamped);
+    const el = document.getElementById("lessons");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   return (
     <main className="flex-1 pb-20">
       {/* ================================================================= */}
@@ -235,80 +258,69 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[38rem] h-[20rem] rounded-full bg-[#FAF3F6]/80 blur-3xl pointer-events-none"
         />
 
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-12 pb-14 sm:pt-16 sm:pb-20 relative z-10">
-          {/* Centered Editorial Opening */}
-          <div className="max-w-4xl mx-auto text-center">
-            {/* Botanical Green Eyebrow Pill */}
-            <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#EBF4EE]/90 border border-[#C8DFCF] text-[#2E5741] text-xs sm:text-sm font-semibold shadow-[0_2px_12px_rgba(61,107,82,0.06)]">
-              <span className="font-serif-arabic text-base leading-none text-[#3D6B52]">
-                ۝
-              </span>
-              <span>في رِحابِ القُرآن</span>
-              <span className="w-1 h-1 rounded-full bg-[#8E3A7A]/50" />
-              <span className="text-[#8E3A7A]">المنصة العلمية والدعوية</span>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-14 sm:pt-14 sm:pb-18 relative z-10">
+          {/* Two-Column RTL Hero: Official Transparent Emblem on Right + Larger Clear Quote on Left */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+            {/* Right Column: Official Large Transparent Logo */}
+            <div className="lg:col-span-4 flex items-center justify-center">
+              <LogoAnzalahu variant="heroEmblem" />
             </div>
 
-            {/* PRIMARY FOCAL STATEMENT: Fatima Hijazi's Quote — First thing the eye sees */}
-            <div className="mt-7 sm:mt-9 relative">
-              {/* Subtle top botanical-rose hairline */}
-              <div className="mx-auto mb-6 flex items-center justify-center gap-2">
-                <span className="h-px w-12 bg-gradient-to-l from-[#D68FBF] to-transparent" />
-                <span className="w-2 h-2 rounded-full bg-[#3D6B52]/70" />
-                <span className="h-px w-12 bg-gradient-to-r from-[#D68FBF] to-transparent" />
-              </div>
-
-              <h1 className="font-serif-arabic text-2xl sm:text-[2rem] lg:text-[2.35rem] font-bold text-[#2B1626] leading-[1.95] sm:leading-[1.9] tracking-tight">
+            {/* Left Column: Clear, Larger Poetic Quote & Signature */}
+            <div className="lg:col-span-8 text-center lg:text-right">
+              <h1 className="font-serif-arabic text-2xl sm:text-[1.7rem] lg:text-[1.95rem] font-bold text-[#2B1626] leading-[2] tracking-normal">
                 «ما طابت الحياةُ إلا بالعيش{" "}
                 <span className="text-[#8E3A7A]">في رحابِ القرآن</span>، ولا
                 استقامت الخطى إلا بالسعي لأجلِه في كلّ ميدان؛ ففي قُربِه{" "}
-                <span className="text-[#2E5741]">سكينةٌ تُرمِّمُ شتاتَ الروح</span>
+                <span className="text-[#2E5741]">
+                  سكينةٌ تُرمِّمُ شتاتَ الروح
+                </span>
                 ، وفي صُحبتِه أنسٌ يَشفي الجروح. هنا نُصاحب الآيةَ تأمُّلاً
-                وعملاً، ليبقى أثرُها في القلبِ حيّاً لا يزول.»
+                وعملاً، ليبقى أثرُها في القلبِ حيّاً لا يزول»
               </h1>
 
-              {/* Signature & Role */}
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-                <span className="h-px w-8 bg-gradient-to-l from-[#8E3A7A]/60 to-transparent hidden sm:inline-block" />
+              {/* Single Signature Line */}
+              <div className="mt-5 flex flex-wrap items-center justify-center lg:justify-start gap-x-2.5 gap-y-1 text-xs sm:text-sm text-[#6E4E65]">
                 <span className="font-serif-arabic text-lg sm:text-xl font-bold text-[#8E3A7A]">
                   الأستاذة فاطمة حجازي
                 </span>
                 <span className="text-[#D68FBF]">•</span>
-                <span className="text-xs sm:text-sm text-[#5C3D55] font-medium">
-                  {data.settings.sheikhTitle || "الدروس العلمية والشروحات المنهجية"}
+                <span className="font-medium text-[#2E5741]">
+                  {data.settings.sheikhTitle ||
+                    "الدروس العلمية والشروحات المنهجية"}
                 </span>
-                <span className="h-px w-8 bg-gradient-to-r from-[#3D6B52]/50 to-transparent hidden sm:inline-block" />
               </div>
             </div>
+          </div>
 
-            {/* Action Buttons (3-Tier System: Primary Purple, Outline Botanical Green, Secondary Blush) */}
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
-              {latestLesson && (
-                <button
-                  type="button"
-                  onClick={() => playLesson(latestLesson, data.lessons)}
-                  className="inline-flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-2xl bg-[#8E3A7A] hover:bg-[#752D64] text-white font-semibold shadow-[0_8px_24px_rgba(142,58,122,0.28)] transition-all cursor-pointer transform hover:-translate-y-0.5"
-                >
-                  <Play className="w-4 h-4 fill-current mr-[-2px]" />
-                  <span>استمع لأحدث درس</span>
-                </button>
-              )}
-
-              <a
-                href="#series"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white border border-[#C8DFCF] hover:border-[#3D6B52] text-[#2E5741] hover:bg-[#EBF4EE]/70 font-semibold transition-all shadow-xs"
+          {/* Dedicated Centered Action Buttons Row */}
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-3.5">
+            {latestLesson && (
+              <button
+                type="button"
+                onClick={() => playLesson(latestLesson, data.lessons)}
+                className="inline-flex items-center justify-center gap-2.5 px-6 py-3 rounded-2xl bg-[#8E3A7A] hover:bg-[#752D64] text-white text-sm sm:text-base font-semibold shadow-[0_6px_20px_rgba(142,58,122,0.25)] transition-all cursor-pointer transform hover:-translate-y-0.5"
               >
-                <BookOpen className="w-4 h-4 text-[#3D6B52]" />
-                <span>استعراض السلاسل العلمية</span>
-              </a>
+                <Play className="w-4 h-4 fill-current mr-[-2px]" />
+                <span>استمع لأحدث درس</span>
+              </button>
+            )}
 
-              <a
-                href="#lessons"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#EBC6DD]/45 hover:bg-[#EBC6DD]/75 text-[#8E3A7A] font-semibold transition-all"
-              >
-                <Headphones className="w-4 h-4 text-[#B8559B]" />
-                <span>جميع الدروس والمحاضرات</span>
-              </a>
-            </div>
+            <a
+              href="#series"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-white border border-[#C8DFCF] hover:border-[#3D6B52] text-[#2E5741] hover:bg-[#EBF4EE]/70 text-sm sm:text-base font-semibold transition-all shadow-xs"
+            >
+              <BookOpen className="w-4 h-4 text-[#3D6B52]" />
+              <span>استعراض السلاسل العلمية</span>
+            </a>
+
+            <a
+              href="#lessons"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#EBC6DD]/45 hover:bg-[#EBC6DD]/75 text-[#8E3A7A] text-sm sm:text-base font-semibold transition-all"
+            >
+              <Headphones className="w-4 h-4 text-[#B8559B]" />
+              <span>جميع الدروس والمحاضرات</span>
+            </a>
           </div>
 
           {/* ================================================================= */}
@@ -581,18 +593,16 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
           <button
             type="button"
             onClick={() => setSelectedCategory("الكل")}
-            className={`group px-4 py-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 ${
-              selectedCategory === "الكل"
+            className={`group px-4 py-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 ${selectedCategory === "الكل"
                 ? "bg-[#8E3A7A] text-white border-[#8E3A7A] shadow-[0_6px_20px_rgba(142,58,122,0.22)]"
                 : "bg-white border-[#EAD5E1] text-[#2B1626] hover:border-[#8E3A7A]/60 hover:bg-[#FAF3F6]"
-            }`}
+              }`}
           >
             <div
-              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                selectedCategory === "الكل"
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${selectedCategory === "الكل"
                   ? "bg-white/20 text-white"
                   : "bg-[#FAF3F6] text-[#8E3A7A]"
-              }`}
+                }`}
             >
               <Grid className="w-4 h-4" />
             </div>
@@ -601,9 +611,8 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
                 جميع الأبواب
               </div>
               <div
-                className={`text-[11px] mt-0.5 ${
-                  selectedCategory === "الكل" ? "text-white/85" : "text-[#6E4E65]"
-                }`}
+                className={`text-[11px] mt-0.5 ${selectedCategory === "الكل" ? "text-white/85" : "text-[#6E4E65]"
+                  }`}
               >
                 {data.lessons.length} درس
               </div>
@@ -625,22 +634,20 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
                 key={cat}
                 type="button"
                 onClick={() => setSelectedCategory(isSelected ? "الكل" : cat)}
-                className={`group px-4 py-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 ${
-                  isSelected
+                className={`group px-4 py-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 ${isSelected
                     ? isQuran
                       ? "bg-[#2E5741] text-white border-[#2E5741] shadow-[0_6px_20px_rgba(46,87,65,0.22)]"
                       : "bg-[#8E3A7A] text-white border-[#8E3A7A] shadow-[0_6px_20px_rgba(142,58,122,0.22)]"
                     : "bg-white border-[#EAD5E1] text-[#2B1626] hover:border-[#3D6B52]/50 hover:bg-[#FAF3F6]/70"
-                }`}
+                  }`}
               >
                 <div
-                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                    isSelected
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isSelected
                       ? "bg-white/20 text-white"
                       : isQuran
-                      ? "bg-[#EBF4EE] text-[#2E5741]"
-                      : "bg-[#FAF3F6] text-[#8E3A7A]"
-                  }`}
+                        ? "bg-[#EBF4EE] text-[#2E5741]"
+                        : "bg-[#FAF3F6] text-[#8E3A7A]"
+                    }`}
                 >
                   <IconComponent className="w-4 h-4" />
                 </div>
@@ -649,9 +656,8 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
                     {cat}
                   </div>
                   <div
-                    className={`text-[11px] mt-0.5 ${
-                      isSelected ? "text-white/85" : "text-[#6E4E65]"
-                    }`}
+                    className={`text-[11px] mt-0.5 ${isSelected ? "text-white/85" : "text-[#6E4E65]"
+                      }`}
                   >
                     {count} {count === 1 ? "درس" : "دروس"}
                   </div>
@@ -722,11 +728,10 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
                     {/* Top Badges */}
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-3.5">
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-                          isTafsir
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border ${isTafsir
                             ? "bg-[#EBF4EE] text-[#2E5741] border-[#C8DFCF]"
                             : "bg-[#FAF3F6] text-[#8E3A7A] border-[#EBC6DD]"
-                        }`}
+                          }`}
                       >
                         {series.category}
                       </span>
@@ -738,11 +743,10 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
                           </span>
                         )}
                         <span
-                          className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
-                            series.status === "completed"
+                          className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${series.status === "completed"
                               ? "bg-[#EBF4EE] text-[#2E5741] border-[#C8DFCF]"
                               : "bg-[#FAF3F6] text-[#B8559B] border-[#EBC6DD]"
-                          }`}
+                            }`}
                         >
                           {series.status === "completed" ? "مكتملة" : "مستمرة"}
                         </span>
@@ -825,7 +829,7 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
             </div>
             <div>
               <h2 className="font-serif-arabic text-2xl sm:text-3xl font-bold text-[#2B1626]">
-                الدروس والمحاضرات الصوتية
+                أحدث الدروس والمحاضرات الصوتية
               </h2>
               <p className="text-xs sm:text-sm text-[#5C3D55] mt-0.5">
                 استمع مباشرة بنقاء صوتي عالي، أو حمّل الملفات بصيغة MP3 مجاناً
@@ -838,22 +842,20 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
             <button
               type="button"
               onClick={() => setLessonTab("all")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                lessonTab === "all"
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${lessonTab === "all"
                   ? "bg-[#8E3A7A] text-white shadow-xs"
                   : "text-[#5C3D55] hover:text-[#8E3A7A]"
-              }`}
+                }`}
             >
               جميع الدروس ({data.lessons.length})
             </button>
             <button
               type="button"
               onClick={() => setLessonTab("single")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                lessonTab === "single"
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${lessonTab === "single"
                   ? "bg-[#8E3A7A] text-white shadow-xs"
                   : "text-[#5C3D55] hover:text-[#8E3A7A]"
-              }`}
+                }`}
             >
               دروس مفردة ({data.lessons.filter((l) => !l.seriesId).length})
             </button>
@@ -865,16 +867,58 @@ export function HomeLibraryClient({ data }: { data: DatabasePayload }) {
             لا توجد دروس مطابقة لمعايير البحث الحالية.
           </div>
         ) : (
-          <div className="space-y-4">
-            {filteredLessons.map((lesson) => (
-              <LessonRow
-                key={lesson.id}
-                lesson={lesson}
-                series={lesson.seriesId ? seriesMap.get(lesson.seriesId) : null}
-                queue={filteredLessons}
-              />
-            ))}
-          </div>
+          <>
+            <div className="space-y-4">
+              {paginatedLessons.map((lesson) => (
+                <LessonRow
+                  key={lesson.id}
+                  lesson={lesson}
+                  series={lesson.seriesId ? seriesMap.get(lesson.seriesId) : null}
+                  queue={filteredLessons}
+                />
+              ))}
+            </div>
+
+            {filteredLessons.length > LESSONS_PER_PAGE && (
+              <div className="mt-7 rounded-2xl border border-[#EAD5E1] bg-white px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
+                <div className="text-xs sm:text-sm text-[#5C3D55]">
+                  عرض{" "}
+                  <strong className="text-[#8E3A7A]">
+                    {pageStartIdx + 1} – {Math.min(pageStartIdx + LESSONS_PER_PAGE, filteredLessons.length)}
+                  </strong>{" "}
+                  من أصل{" "}
+                  <strong className="text-[#2E5741]">{filteredLessons.length}</strong> درساً
+                  <span className="mx-2 text-[#D68FBF]">•</span>
+                  <span>
+                    صفحة <strong>{currentLessonsPage}</strong> من{" "}
+                    <strong>{totalLessonsPages}</strong>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    disabled={currentLessonsPage <= 1}
+                    onClick={() => goToLessonsPage(currentLessonsPage - 1)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-[#EAD5E1] bg-white text-xs sm:text-sm font-semibold text-[#8E3A7A] hover:bg-[#FAF3F6] hover:border-[#8E3A7A] transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-[#EAD5E1]"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                    <span>السابق</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={currentLessonsPage >= totalLessonsPages}
+                    onClick={() => goToLessonsPage(currentLessonsPage + 1)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#8E3A7A] hover:bg-[#752D64] text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-[#8E3A7A]"
+                  >
+                    <span>التالي</span>
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </section>
 

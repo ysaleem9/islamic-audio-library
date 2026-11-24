@@ -5,8 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  Bell,
   BookOpen,
+  Calendar,
   CheckCircle2,
+  Clock,
   CloudUpload,
   CornerDownLeft,
   Database,
@@ -21,6 +24,7 @@ import {
   Layers,
   Loader2,
   LogOut,
+  Megaphone,
   Play,
   Plus,
   RefreshCw,
@@ -32,6 +36,7 @@ import {
   UserCheck,
   UserPlus,
   Users,
+  Video,
 } from "lucide-react";
 import {
   ADMIN_PERMISSION_LABELS,
@@ -41,7 +46,9 @@ import {
   type AdminUser,
   type DatabasePayload,
   type Lesson,
+  type NotificationType,
   type Series,
+  type SiteNotification,
   type SiteSettings,
 } from "@/lib/types";
 import { formatDuration, parseDurationInput } from "@/lib/format";
@@ -68,7 +75,7 @@ interface ArchiveResolvedTrack {
   selected: boolean;
 }
 
-type AdminTab = "lessons" | "import" | "series" | "settings" | "admins" | "guide";
+type AdminTab = "lessons" | "series" | "notifications" | "settings" | "admins" | "guide";
 
 export function AdminDashboardClient({
   initialData,
@@ -92,7 +99,6 @@ export function AdminDashboardClient({
 
   const getInitialTab = (): AdminTab => {
     if (canPermission("manage_lessons")) return "lessons";
-    if (canPermission("import_archive")) return "import";
     if (canPermission("manage_series")) return "series";
     if (canPermission("manage_settings")) return "settings";
     if (canPermission("manage_admins")) return "admins";
@@ -154,6 +160,24 @@ export function AdminDashboardClient({
   const [settingsForm, setSettingsForm] = useState<SiteSettings>(initialData.settings);
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Notifications state (إعلانات ولقاءات إيمانية)
+  const [notifications, setNotifications] = useState<SiteNotification[]>(
+    initialData.notifications || []
+  );
+  const [notifType, setNotifType] = useState<NotificationType>("announcement");
+  const [notifTitle, setNotifTitle] = useState("");
+  const [notifMessage, setNotifMessage] = useState("");
+  const [notifMeetingDate, setNotifMeetingDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [notifMeetingTime, setNotifMeetingTime] = useState("20:00");
+  const [notifZoomUrl, setNotifZoomUrl] = useState("");
+  const [notifDurationDays, setNotifDurationDays] = useState(
+    String(initialData.settings.notificationDefaultDays || 7)
+  );
+  const [notifSaveDefaultDays, setNotifSaveDefaultDays] = useState(false);
+  const [savingNotif, setSavingNotif] = useState(false);
+
   // Admins management form state
   const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
   const [adminUsername, setAdminUsername] = useState("");
@@ -175,9 +199,10 @@ export function AdminDashboardClient({
   const refreshData = useCallback(async (isBackground = false) => {
     if (!isBackground) setSyncing(true);
     try {
-      const [dataRes, adminsRes] = await Promise.all([
+      const [dataRes, adminsRes, notifRes] = await Promise.all([
         fetch("/api/data", { cache: "no-store" }),
         fetch("/api/admins", { cache: "no-store" }),
+        fetch("/api/notifications", { cache: "no-store" }),
       ]);
       if (dataRes.ok) {
         const fresh = (await dataRes.json()) as DatabasePayload;
@@ -189,6 +214,10 @@ export function AdminDashboardClient({
       if (adminsRes.ok) {
         const freshAdmins = (await adminsRes.json()) as AdminUser[];
         setAdmins(freshAdmins);
+      }
+      if (notifRes.ok) {
+        const freshNotifs = (await notifRes.json()) as SiteNotification[];
+        if (Array.isArray(freshNotifs)) setNotifications(freshNotifs);
       }
     } catch {
       // Ignore background sync failures
@@ -522,6 +551,68 @@ export function AdminDashboardClient({
     }
   };
 
+  // Notification handlers
+  const handleSaveNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingNotif(true);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: notifType,
+          title: notifTitle,
+          message: notifMessage,
+          meetingDate: notifType === "faith_meeting" ? notifMeetingDate : "",
+          meetingTime: notifType === "faith_meeting" ? notifMeetingTime : "",
+          zoomUrl: notifType === "faith_meeting" ? notifZoomUrl : "",
+          durationDays: Math.max(1, Number(notifDurationDays || 7)),
+          saveDefaultDays: notifSaveDefaultDays,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        showNotice("error", result.error || "تعذر نشر الإشعار");
+        return;
+      }
+      setNotifTitle("");
+      setNotifMessage("");
+      setNotifZoomUrl("");
+      setNotifSaveDefaultDays(false);
+      await refreshData();
+      showNotice(
+        "success",
+        notifType === "faith_meeting"
+          ? "تم نشر إشعار اللقاء الإيماني بنجاح!"
+          : "تم نشر الإعلان لجميع زوار الموقع بنجاح!"
+      );
+    } catch {
+      showNotice("error", "حدث خطأ أثناء نشر الإشعار");
+    } finally {
+      setSavingNotif(false);
+    }
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    if (!window.confirm("هل تريد حذف هذا الإشعار نهائياً؟")) return;
+    const res = await fetch(`/api/notifications/${id}`, { method: "DELETE" });
+    if (res.ok) {
+      await refreshData();
+      showNotice("success", "تم حذف الإشعار");
+    }
+  };
+
+  // Load notifications on initial mount
+  useEffect(() => {
+    fetch("/api/notifications", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((items) => {
+        if (Array.isArray(items)) setNotifications(items);
+      })
+      .catch(() => undefined);
+  }, []);
+
   // Settings handler
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -664,16 +755,16 @@ export function AdminDashboardClient({
       visible: canPermission("manage_lessons"),
     },
     {
-      id: "import" as AdminTab,
-      label: "استيراد من Archive.org",
-      icon: DownloadCloud,
-      visible: canPermission("import_archive") || canPermission("manage_lessons"),
-    },
-    {
       id: "series" as AdminTab,
       label: `السلاسل (${data.series.length})`,
       icon: Layers,
       visible: canPermission("manage_series"),
+    },
+    {
+      id: "notifications" as AdminTab,
+      label: `الإشعارات (${notifications.filter((n) => new Date(n.expiresAt).getTime() > Date.now()).length})`,
+      icon: Bell,
+      visible: canPermission("manage_settings") || canPermission("manage_lessons"),
     },
     {
       id: "settings" as AdminTab,
@@ -1077,143 +1168,6 @@ export function AdminDashboardClient({
           </div>
         )}
 
-        {/* TAB 2: INTERNET ARCHIVE BATCH IMPORTER */}
-        {tab === "import" && (
-          <div className="rounded-2xl border border-[#EBC6DD] bg-white p-6 space-y-6">
-            <div>
-              <h2 className="font-serif-arabic text-2xl font-bold text-[#8E3A7A]">
-                استيراد ذكي من Internet Archive (archive.org)
-              </h2>
-              <p className="text-sm text-[#6E4E65] mt-1 leading-relaxed">
-                ارفع ملفاتك الصوتية (أو سلسلة كاملة) مجاناً وبلا حدود على موقع{" "}
-                <a
-                  href="https://archive.org/upload"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[#8E3A7A] underline font-medium"
-                >
-                  archive.org/upload
-                </a>{" "}
-                ثم الصق رابط الصفحة هنا، وسنستخرج تلقائياً جميع ملفات MP3 ومددها لاستيرادها بضغطة زر!
-              </p>
-            </div>
-
-            <form onSubmit={handleResolveArchive} className="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                required
-                dir="ltr"
-                value={archiveUrlInput}
-                onChange={(e) => setArchiveUrlInput(e.target.value)}
-                placeholder="https://archive.org/details/your-item-identifier"
-                className="flex-1 px-4 py-3 rounded-xl border border-[#EBC6DD] text-sm text-left focus:outline-none focus:border-[#8E3A7A]"
-              />
-              <button
-                type="submit"
-                disabled={resolvingArchive}
-                className="px-6 py-3 rounded-xl bg-[#8E3A7A] hover:bg-[#6F2B5F] text-white font-semibold text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
-              >
-                {resolvingArchive ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <DownloadCloud className="w-4 h-4" />
-                )}
-                <span>جلب الملفات الصوتية</span>
-              </button>
-            </form>
-
-            {archiveMeta && archiveTracks.length > 0 && (
-              <div className="space-y-5 pt-4 border-t border-[#EBC6DD]">
-                <div className="flex flex-wrap items-center justify-between gap-4 bg-[#FAF3F6] p-4 rounded-xl border border-[#EBC6DD]">
-                  <div>
-                    <div className="text-xs text-[#6E4E65]">العنصر على أرشيف الإنترنت:</div>
-                    <div className="font-bold text-[#2D1626]">{archiveMeta.itemTitle}</div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <select
-                      value={importSeriesId}
-                      onChange={(e) => setImportSeriesId(e.target.value)}
-                      className="px-3 py-2 rounded-xl border border-[#EBC6DD] text-sm bg-white"
-                    >
-                      <option value="">استيراد كدروس مفردة</option>
-                      {flattenedSeries.map((item) => (
-                        <option key={item.series.id} value={item.series.id}>
-                          إضافة إلى: {item.pathLabel}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={importCategory}
-                      onChange={(e) => setImportCategory(e.target.value)}
-                      className="px-3 py-2 rounded-xl border border-[#EBC6DD] text-sm bg-white"
-                    >
-                      {DEFAULT_CATEGORIES.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5 max-h-[420px] overflow-y-auto pl-1">
-                  {archiveTracks.map((track, idx) => (
-                    <div
-                      key={track.name}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-[#EBC6DD] bg-white"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={track.selected}
-                        onChange={(e) => {
-                          const next = [...archiveTracks];
-                          next[idx] = { ...next[idx], selected: e.target.checked };
-                          setArchiveTracks(next);
-                        }}
-                        className="w-4 h-4 accent-[#8E3A7A]"
-                      />
-                      <input
-                        type="text"
-                        value={track.title}
-                        onChange={(e) => {
-                          const next = [...archiveTracks];
-                          next[idx] = { ...next[idx], title: e.target.value };
-                          setArchiveTracks(next);
-                        }}
-                        className="flex-1 px-3 py-1.5 rounded-lg border border-[#EBC6DD] text-sm focus:outline-none focus:border-[#8E3A7A]"
-                      />
-                      <span className="text-xs text-[#6E4E65] shrink-0" dir="ltr">
-                        {track.durationSeconds > 0 ? formatDuration(track.durationSeconds) : "—"}
-                      </span>
-                      <span className="text-[11px] px-2 py-0.5 rounded bg-[#FAF3F6] text-[#6E4E65] shrink-0">
-                        {track.sizeBytes > 0
-                          ? `${(track.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                          : track.format}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleBatchImport}
-                  disabled={importingTracks || archiveTracks.every((t) => !t.selected)}
-                  className="px-6 py-3 rounded-xl bg-[#B8559B] hover:bg-[#8E3A7A] text-white font-semibold text-sm inline-flex items-center gap-2 disabled:opacity-60 cursor-pointer"
-                >
-                  {importingTracks ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Plus className="w-4 h-4" />
-                  )}
-                  <span>
-                    استيراد ({archiveTracks.filter((t) => t.selected).length}) دروس إلى الموقع
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* TAB 3: SERIES & NESTED FOLDERS */}
         {tab === "series" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1479,6 +1433,313 @@ export function AdminDashboardClient({
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: NOTIFICATIONS (إعلانات ولقاءات إيمانية) */}
+        {tab === "notifications" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <form
+              onSubmit={handleSaveNotification}
+              className="lg:col-span-5 rounded-2xl border border-[#EBC6DD] bg-white p-6 space-y-4 h-fit"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#FAF3F6] border border-[#EBC6DD] text-[#8E3A7A] flex items-center justify-center">
+                  <Bell className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="font-serif-arabic text-xl font-bold text-[#8E3A7A]">
+                    إضافة إشعار أو لقاء إيماني
+                  </h2>
+                  <p className="text-[11px] text-[#6E4E65]">
+                    يظهر لجميع زوار الموقع داخل أيقونة الإشعارات ويختفي تلقائياً بعد انتهاء المدة
+                  </p>
+                </div>
+              </div>
+
+              {/* Type Dropdown */}
+              <div>
+                <label className="block text-xs font-semibold text-[#2D1626] mb-1">
+                  نوع الإشعار *
+                </label>
+                <select
+                  value={notifType}
+                  onChange={(e) => setNotifType(e.target.value as NotificationType)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-[#EBC6DD] text-sm bg-white focus:outline-none focus:border-[#8E3A7A]"
+                >
+                  <option value="announcement">إعلان</option>
+                  <option value="faith_meeting">لقاء إيماني</option>
+                </select>
+              </div>
+
+              {notifType === "announcement" ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#2D1626] mb-1">
+                      عنوان الإعلان (اختياري)
+                    </label>
+                    <input
+                      type="text"
+                      value={notifTitle}
+                      onChange={(e) => setNotifTitle(e.target.value)}
+                      placeholder="مثال: تنويه هام لطالبات العلم"
+                      className="w-full px-3.5 py-2 rounded-xl border border-[#EBC6DD] text-sm focus:outline-none focus:border-[#8E3A7A]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#2D1626] mb-1">
+                      نص الإعلان *
+                    </label>
+                    <textarea
+                      rows={4}
+                      required
+                      value={notifMessage}
+                      onChange={(e) => setNotifMessage(e.target.value)}
+                      placeholder="اكتب نص الإعلان الذي سيظهر لجميع مستخدمي الموقع..."
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-[#EBC6DD] text-sm leading-relaxed focus:outline-none focus:border-[#8E3A7A]"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#2D1626] mb-1">
+                      عنوان اللقاء الإيماني *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={notifTitle}
+                      onChange={(e) => setNotifTitle(e.target.value)}
+                      placeholder="مثال: مجلس تدبر سورة الكهف المباشر"
+                      className="w-full px-3.5 py-2 rounded-xl border border-[#EBC6DD] text-sm focus:outline-none focus:border-[#8E3A7A]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#2D1626] mb-1">
+                        تاريخ اللقاء *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={notifMeetingDate}
+                        onChange={(e) => setNotifMeetingDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-[#EBC6DD] text-sm focus:outline-none focus:border-[#8E3A7A]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#2D1626] mb-1">
+                        وقت اللقاء *
+                      </label>
+                      <input
+                        type="time"
+                        required
+                        value={notifMeetingTime}
+                        onChange={(e) => setNotifMeetingTime(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-[#EBC6DD] text-sm focus:outline-none focus:border-[#8E3A7A]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#2D1626] mb-1">
+                      رابط الاجتماع على برنامج Zoom *
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      dir="ltr"
+                      value={notifZoomUrl}
+                      onChange={(e) => setNotifZoomUrl(e.target.value)}
+                      placeholder="https://us02web.zoom.us/j/1234567890"
+                      className="w-full px-3.5 py-2 rounded-xl border border-[#EBC6DD] text-sm text-left focus:outline-none focus:border-[#8E3A7A]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#2D1626] mb-1">
+                      ملاحظات إضافية (اختياري)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={notifMessage}
+                      onChange={(e) => setNotifMessage(e.target.value)}
+                      placeholder="مثال: الدعوة عامة للجميع — يُرجى الدخول قبل الموعد بـ 5 دقائق"
+                      className="w-full px-3.5 py-2 rounded-xl border border-[#EBC6DD] text-sm focus:outline-none focus:border-[#8E3A7A]"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Duration Days Config Value */}
+              <div className="rounded-xl bg-[#FAF3F6] border border-[#EBC6DD] p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-semibold text-[#8E3A7A]">
+                    مدة بقاء الإشعار في الموقع (بالأيام) *
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    required
+                    value={notifDurationDays}
+                    onChange={(e) => setNotifDurationDays(e.target.value)}
+                    className="w-20 px-2.5 py-1.5 rounded-lg border border-[#EBC6DD] bg-white text-sm text-center font-bold text-[#8E3A7A]"
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {[1, 3, 7, 14, 30].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setNotifDurationDays(String(d))}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                        Number(notifDurationDays) === d
+                          ? "bg-[#8E3A7A] text-white"
+                          : "bg-white border border-[#EBC6DD] text-[#5C3D55] hover:border-[#8E3A7A]"
+                      }`}
+                    >
+                      {d === 1 ? "يوم واحد" : d <= 10 ? `${d} أيام` : `${d} يوماً`}
+                    </button>
+                  ))}
+                </div>
+
+                <label className="flex items-center gap-2 text-[11px] text-[#5C3D55] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={notifSaveDefaultDays}
+                    onChange={(e) => setNotifSaveDefaultDays(e.target.checked)}
+                    className="accent-[#8E3A7A]"
+                  />
+                  <span>حفظ هذا العدد كقيمة افتراضية للإشعارات القادمة</span>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={savingNotif}
+                className="w-full py-3 rounded-xl bg-[#8E3A7A] hover:bg-[#6F2B5F] text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
+              >
+                {savingNotif ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
+                <span>{notifType === "faith_meeting" ? "نشر اللقاء الإيماني" : "نشر الإعلان"}</span>
+              </button>
+            </form>
+
+            {/* Notifications List */}
+            <div className="lg:col-span-7 rounded-2xl border border-[#EBC6DD] bg-white p-6">
+              <h2 className="font-serif-arabic text-xl font-bold text-[#2D1626] mb-4">
+                الإشعارات المنشورة ({notifications.length})
+              </h2>
+
+              {notifications.length === 0 ? (
+                <p className="text-sm text-[#6E4E65] py-10 text-center">
+                  لا توجد إشعارات بعد. أضف إعلاناً أو لقاءً إيمانياً من النموذج المجاور.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {notifications.map((n) => {
+                    const remainingMs = new Date(n.expiresAt).getTime() - Date.now();
+                    const isActive = remainingMs > 0;
+                    const remainingDays = Math.max(1, Math.ceil(remainingMs / (1000 * 60 * 60 * 24)));
+                    const isMeeting = n.type === "faith_meeting";
+
+                    return (
+                      <div
+                        key={n.id}
+                        className={`rounded-xl border p-4 flex items-start justify-between gap-3 ${
+                          isActive
+                            ? isMeeting
+                              ? "border-[#C8DFCF] bg-[#F7FBF8]"
+                              : "border-[#EBC6DD] bg-white"
+                            : "border-gray-200 bg-gray-50/70 opacity-75"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold ${
+                                isMeeting
+                                  ? "bg-[#EBF4EE] text-[#2E5741]"
+                                  : "bg-[#FAF3F6] text-[#8E3A7A]"
+                              }`}
+                            >
+                              {isMeeting ? <Video className="w-3 h-3" /> : <Megaphone className="w-3 h-3" />}
+                              {isMeeting ? "لقاء إيماني" : "إعلان"}
+                            </span>
+
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-semibold ${
+                                isActive
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-gray-200 text-gray-600"
+                              }`}
+                            >
+                              {isActive
+                                ? `نشط • متبقي ${remainingDays} ${remainingDays === 1 ? "يوم" : "أيام"} (المدة: ${n.durationDays} يوم)`
+                                : "منتهي الصلاحية ومخفي من الموقع"}
+                            </span>
+                          </div>
+
+                          {n.title && (
+                            <p className="font-bold text-sm sm:text-base text-[#2D1626]">
+                              {n.title}
+                            </p>
+                          )}
+
+                          {isMeeting && (n.meetingDate || n.meetingTime) && (
+                            <div className="flex flex-wrap items-center gap-3 text-xs text-[#2E5741] font-medium">
+                              {n.meetingDate && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  {n.meetingDate}
+                                </span>
+                              )}
+                              {n.meetingTime && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  {n.meetingTime}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {n.message && (
+                            <p className="text-xs sm:text-sm text-[#5C3D55] whitespace-pre-line">
+                              {n.message}
+                            </p>
+                          )}
+
+                          {isMeeting && n.zoomUrl && (
+                            <a
+                              href={n.zoomUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#2E5741] hover:underline"
+                              dir="ltr"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span className="truncate max-w-xs">{n.zoomUrl}</span>
+                            </a>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteNotification(n.id)}
+                          title="حذف الإشعار"
+                          className="p-2 rounded-lg text-red-600 hover:bg-red-50 cursor-pointer shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     );
                   })}
