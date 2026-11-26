@@ -30,7 +30,9 @@ function extractSeriesSegment(pathStr: string | null | undefined, fallbackId: st
 
 export function SeriesPageDynamicClient({ initialId }: { initialId: string }) {
   const pathname = usePathname();
-  const [browserPath, setBrowserPath] = useState<string>("");
+  const [browserPath, setBrowserPath] = useState<string>(() =>
+    typeof window !== "undefined" ? window.location.pathname : ""
+  );
   const [data, setData] = useState<DatabasePayload>(fallbackData as unknown as DatabasePayload);
 
   // Always sync with the actual browser URL (critical when Cloudflare Worker serves placeholder.html)

@@ -4,11 +4,13 @@ import crypto from "crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   ALL_ADMIN_PERMISSIONS,
+  normalizeMindMapImages,
   type AdminPermission,
   type AdminUser,
   type AdminUserRecord,
   type DatabasePayload,
   type Lesson,
+  type MindMapImage,
   type NotificationType,
   type Series,
   type SiteNotification,
@@ -345,6 +347,10 @@ function mapSupabaseSeries(row: Record<string, unknown>): Series {
   };
 }
 
+function parseMindMapImages(val: unknown): MindMapImage[] {
+  return normalizeMindMapImages(val);
+}
+
 function mapSupabaseLesson(row: Record<string, unknown>): Lesson {
   return {
     id: String(row.id),
@@ -360,6 +366,7 @@ function mapSupabaseLesson(row: Record<string, unknown>): Lesson {
     publishedAt: String(row.published_at ?? ""),
     playsCount: Number(row.plays_count ?? 0),
     isFeatured: Boolean(row.is_featured),
+    mindMapImages: parseMindMapImages(row.mind_map_images),
     createdAt: String(row.created_at ?? new Date().toISOString()),
   };
 }
@@ -743,6 +750,7 @@ export async function createLesson(input: {
   durationSeconds?: number;
   publishedAt?: string;
   isFeatured?: boolean;
+  mindMapImages?: (string | MindMapImage)[];
 }): Promise<Lesson> {
   const id = `les-${crypto.randomBytes(5).toString("hex")}`;
   const today = new Date().toISOString().slice(0, 10);
@@ -763,13 +771,14 @@ export async function createLesson(input: {
     publishedAt: (input.publishedAt || today).trim(),
     playsCount: 0,
     isFeatured: Boolean(input.isFeatured),
+    mindMapImages: parseMindMapImages(input.mindMapImages),
     createdAt: new Date().toISOString(),
   };
 
   if (isD1Configured()) {
     await queryCloudflareD1(
-      `INSERT INTO lessons (id, title, series_id, episode_number, category, description, notes, audio_url, archive_identifier, duration_seconds, published_at, plays_count, is_featured, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?13)`,
+      `INSERT INTO lessons (id, title, series_id, episode_number, category, description, notes, audio_url, archive_identifier, duration_seconds, published_at, plays_count, is_featured, mind_map_images, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?13, ?14)`,
       [
         item.id,
         item.title,
@@ -783,6 +792,7 @@ export async function createLesson(input: {
         item.durationSeconds,
         item.publishedAt,
         item.isFeatured ? 1 : 0,
+        JSON.stringify(item.mindMapImages || []),
         item.createdAt,
       ]
     );
@@ -838,6 +848,7 @@ export async function updateLesson(
       | "durationSeconds"
       | "publishedAt"
       | "isFeatured"
+      | "mindMapImages"
     >
   >
 ): Promise<Lesson | null> {
@@ -853,9 +864,13 @@ export async function updateLesson(
       category: input.category !== undefined ? input.category.trim() : current.category,
       description: input.description !== undefined ? input.description.trim() : current.description,
       notes: input.notes !== undefined ? input.notes.trim() : current.notes,
+      mindMapImages:
+        input.mindMapImages !== undefined
+          ? parseMindMapImages(input.mindMapImages)
+          : current.mindMapImages || [],
     };
     await queryCloudflareD1(
-      `UPDATE lessons SET title = ?1, series_id = ?2, episode_number = ?3, category = ?4, description = ?5, notes = ?6, audio_url = ?7, archive_identifier = ?8, duration_seconds = ?9, published_at = ?10, is_featured = ?11 WHERE id = ?12`,
+      `UPDATE lessons SET title = ?1, series_id = ?2, episode_number = ?3, category = ?4, description = ?5, notes = ?6, audio_url = ?7, archive_identifier = ?8, duration_seconds = ?9, published_at = ?10, is_featured = ?11, mind_map_images = ?12 WHERE id = ?13`,
       [
         updated.title,
         updated.seriesId,
@@ -868,6 +883,7 @@ export async function updateLesson(
         updated.durationSeconds,
         updated.publishedAt,
         updated.isFeatured ? 1 : 0,
+        JSON.stringify(updated.mindMapImages || []),
         id,
       ]
     );
@@ -887,6 +903,10 @@ export async function updateLesson(
         category: input.category !== undefined ? input.category.trim() : db.lessons[idx].category,
         description: input.description !== undefined ? input.description.trim() : db.lessons[idx].description,
         notes: input.notes !== undefined ? input.notes.trim() : db.lessons[idx].notes,
+        mindMapImages:
+          input.mindMapImages !== undefined
+            ? parseMindMapImages(input.mindMapImages)
+            : db.lessons[idx].mindMapImages || [],
       };
       await writeLocalDb(db);
       return db.lessons[idx];

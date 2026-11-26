@@ -185,6 +185,32 @@ function mapSeries(row) {
   };
 }
 
+function parseMindMapImages(val) {
+  let arr = [];
+  if (Array.isArray(val)) {
+    arr = val;
+  } else if (typeof val === "string" && val.trim()) {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) arr = parsed;
+    } catch {
+      return [];
+    }
+  }
+  const out = [];
+  for (const item of arr) {
+    if (typeof item === "string") {
+      const url = item.trim();
+      if (url) out.push({ url, title: "" });
+    } else if (item && typeof item === "object" && item.url) {
+      const url = String(item.url).trim();
+      const title = String(item.title || "").trim();
+      if (url) out.push({ url, title });
+    }
+  }
+  return out;
+}
+
 function mapLesson(row) {
   return {
     id: String(row.id),
@@ -200,6 +226,7 @@ function mapLesson(row) {
     publishedAt: String(row.published_at ?? ""),
     playsCount: Number(row.plays_count ?? 0),
     isFeatured: Boolean(row.is_featured),
+    mindMapImages: parseMindMapImages(row.mind_map_images),
     createdAt: String(row.created_at ?? new Date().toISOString()),
   };
 }
@@ -443,13 +470,14 @@ async function handleApi(request, env, url) {
         publishedAt: String(body.publishedAt || today),
         playsCount: 0,
         isFeatured: Boolean(body.isFeatured),
+        mindMapImages: parseMindMapImages(body.mindMapImages),
         createdAt: now,
       };
       await env.DB.prepare(
-        `INSERT INTO lessons (id, title, series_id, episode_number, category, description, notes, audio_url, archive_identifier, duration_seconds, published_at, plays_count, is_featured, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?13)`
+        `INSERT INTO lessons (id, title, series_id, episode_number, category, description, notes, audio_url, archive_identifier, duration_seconds, published_at, plays_count, is_featured, mind_map_images, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, ?12, ?13, ?14)`
       )
-        .bind(l.id, l.title, l.seriesId, l.episodeNumber, l.category, l.description, l.notes, l.audioUrl, l.archiveIdentifier, l.durationSeconds, l.publishedAt, l.isFeatured ? 1 : 0, l.createdAt)
+        .bind(l.id, l.title, l.seriesId, l.episodeNumber, l.category, l.description, l.notes, l.audioUrl, l.archiveIdentifier, l.durationSeconds, l.publishedAt, l.isFeatured ? 1 : 0, JSON.stringify(l.mindMapImages || []), l.createdAt)
         .run();
       return jsonResponse(l, 201);
     }
@@ -487,11 +515,15 @@ async function handleApi(request, env, url) {
         durationSeconds: body.durationSeconds !== undefined ? Number(body.durationSeconds) : cur.durationSeconds,
         publishedAt: body.publishedAt !== undefined ? String(body.publishedAt) : cur.publishedAt,
         isFeatured: body.isFeatured !== undefined ? Boolean(body.isFeatured) : cur.isFeatured,
+        mindMapImages:
+          body.mindMapImages !== undefined
+            ? parseMindMapImages(body.mindMapImages)
+            : cur.mindMapImages || [],
       };
       await env.DB.prepare(
-        `UPDATE lessons SET title = ?1, series_id = ?2, episode_number = ?3, category = ?4, description = ?5, notes = ?6, audio_url = ?7, archive_identifier = ?8, duration_seconds = ?9, published_at = ?10, is_featured = ?11 WHERE id = ?12`
+        `UPDATE lessons SET title = ?1, series_id = ?2, episode_number = ?3, category = ?4, description = ?5, notes = ?6, audio_url = ?7, archive_identifier = ?8, duration_seconds = ?9, published_at = ?10, is_featured = ?11, mind_map_images = ?12 WHERE id = ?13`
       )
-        .bind(updated.title, updated.seriesId, updated.episodeNumber, updated.category, updated.description, updated.notes, updated.audioUrl, updated.archiveIdentifier, updated.durationSeconds, updated.publishedAt, updated.isFeatured ? 1 : 0, id)
+        .bind(updated.title, updated.seriesId, updated.episodeNumber, updated.category, updated.description, updated.notes, updated.audioUrl, updated.archiveIdentifier, updated.durationSeconds, updated.publishedAt, updated.isFeatured ? 1 : 0, JSON.stringify(updated.mindMapImages || []), id)
         .run();
       return jsonResponse(updated);
     }
@@ -728,29 +760,33 @@ async function handleApi(request, env, url) {
 
     const formData = await request.formData();
     const file = formData.get("file");
-    const folder = String(formData.get("identifier") || "lessons").trim() || "lessons";
+    const isImage = Boolean(file && typeof file.type === "string" && file.type.startsWith("image/"));
+    const folder = String(formData.get("identifier") || (isImage ? "mindmaps" : "lessons")).trim() || (isImage ? "mindmaps" : "lessons");
     if (!file || typeof file.arrayBuffer !== "function") {
-      return jsonResponse({ error: "يرجى اختيار ملف صوتي" }, 400);
+      return jsonResponse({ error: "يرجى اختيار ملف للرفع" }, 400);
     }
 
-    const cleanName = String(file.name || "lesson.mp3").replace(/[/\\]/g, "_").trim();
+    const cleanName = String(file.name || (isImage ? "mindmap.png" : "lesson.mp3")).replace(/[/\\]/g, "_").trim();
     const objectKey = `${folder}/${Date.now()}-${cleanName}`;
     const buf = await file.arrayBuffer();
 
     await env.AUDIO_BUCKET.put(objectKey, buf, {
-      httpMetadata: { contentType: file.type || "audio/mpeg" },
+      httpMetadata: { contentType: file.type || (isImage ? "image/png" : "audio/mpeg") },
     });
 
     const encodedKey = objectKey.split("/").map((s) => encodeURIComponent(s)).join("/");
     const publicBase = (env.R2_PUBLIC_URL || "https://audio.fatimahijazi.com").replace(/\/+$/, "");
-    const audioUrl = `${publicBase}/${encodedKey}`;
+    const uploadedUrl = `${publicBase}/${encodedKey}`;
 
     return jsonResponse({
       storageMode: "r2",
-      audioUrl,
+      audioUrl: uploadedUrl,
+      imageUrl: uploadedUrl,
       identifier: "msfatimawebsite",
       fileName: objectKey,
-      message: "تم رفع الملف الصوتي مباشرة إلى Cloudflare R2 بنجاح!",
+      message: isImage
+        ? "تم رفع صورة الخريطة الذهنية إلى Cloudflare R2 بنجاح!"
+        : "تم رفع الملف الصوتي مباشرة إلى Cloudflare R2 بنجاح!",
     });
   }
 
@@ -1012,6 +1048,41 @@ async function handleApi(request, env, url) {
   return jsonResponse({ error: "Not found" }, 404);
 }
 
+async function fetchStaticAssetNoRedirect(env, targetPath, request) {
+  const targetUrl = new URL(targetPath, request.url);
+  let res = await env.ASSETS.fetch(new Request(targetUrl, { method: request.method, headers: request.headers }));
+  if (res.status >= 300 && res.status < 400) {
+    const loc = res.headers.get("Location");
+    if (loc) {
+      const nextUrl = new URL(loc, request.url);
+      res = await env.ASSETS.fetch(new Request(nextUrl, { method: request.method, headers: request.headers }));
+    }
+  }
+  return res;
+}
+
+function escapeHtmlAttr(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+async function injectSocialMeta(res, title, description) {
+  const ct = res.headers.get("content-type") || "";
+  if (!ct.includes("text/html") || !title) return res;
+  const html = await res.text();
+  const safeTitle = escapeHtmlAttr(`${title} — الأستاذة فاطمة حجازي`);
+  const safeDesc = escapeHtmlAttr(description || "استمع وحمّل الدروس العلمية والشروحات المنهجية للأستاذة فاطمة حجازي — منصة أنزله بعلمه.");
+  const ogTags = `<meta property="og:title" content="${safeTitle}" /><meta property="og:description" content="${safeDesc}" /><meta name="twitter:title" content="${safeTitle}" />`;
+  const updatedHtml = html
+    .replace(/<title>[^<]*<\/title>/i, `<title>${safeTitle}</title>${ogTags}`);
+  const headers = new Headers(res.headers);
+  headers.delete("content-length");
+  return new Response(updatedHtml, { status: res.status, headers });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1030,18 +1101,43 @@ export default {
     }
 
     if (url.pathname.startsWith("/lessons/")) {
-      const target = url.pathname.endsWith(".txt")
-        ? "/lessons/placeholder.txt"
-        : "/lessons/placeholder.html";
-      const fallbackUrl = new URL(target, request.url);
-      return env.ASSETS.fetch(new Request(fallbackUrl, request));
+      const isRsc = url.pathname.endsWith(".txt");
+      const target = isRsc ? "/lessons/placeholder.txt" : "/lessons/placeholder";
+      const res = await fetchStaticAssetNoRedirect(env, target, request);
+      if (!isRsc && request.method === "GET") {
+        try {
+          const seg = decodeURIComponent(url.pathname.split("/").filter(Boolean)[1] || "");
+          if (seg && seg !== "placeholder") {
+            const row = await env.DB.prepare("SELECT title, description FROM lessons WHERE id = ?1 LIMIT 1").bind(seg).first();
+            if (row?.title) {
+              return injectSocialMeta(res, row.title, row.description);
+            }
+          }
+        } catch {
+          // Ignore meta lookup errors and return plain HTML
+        }
+      }
+      return res;
     }
+
     if (url.pathname.startsWith("/series/")) {
-      const target = url.pathname.endsWith(".txt")
-        ? "/series/placeholder.txt"
-        : "/series/placeholder.html";
-      const fallbackUrl = new URL(target, request.url);
-      return env.ASSETS.fetch(new Request(fallbackUrl, request));
+      const isRsc = url.pathname.endsWith(".txt");
+      const target = isRsc ? "/series/placeholder.txt" : "/series/placeholder";
+      const res = await fetchStaticAssetNoRedirect(env, target, request);
+      if (!isRsc && request.method === "GET") {
+        try {
+          const seg = decodeURIComponent(url.pathname.split("/").filter(Boolean)[1] || "");
+          if (seg && seg !== "placeholder") {
+            const row = await env.DB.prepare("SELECT title, description FROM series WHERE id = ?1 OR slug = ?1 LIMIT 1").bind(seg).first();
+            if (row?.title) {
+              return injectSocialMeta(res, row.title, row.description);
+            }
+          }
+        } catch {
+          // Ignore meta lookup errors and return plain HTML
+        }
+      }
+      return res;
     }
 
     return assetRes;

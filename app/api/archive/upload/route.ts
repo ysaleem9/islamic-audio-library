@@ -10,7 +10,8 @@ import {
 } from "@/lib/archive";
 import { getAllData } from "@/lib/store";
 
-const ALLOWED_EXTENSIONS = [".mp3", ".m4a", ".ogg", ".opus", ".wav", ".aac"];
+const ALLOWED_AUDIO_EXTENSIONS = [".mp3", ".m4a", ".ogg", ".opus", ".wav", ".aac"];
+const ALLOWED_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
 const MAX_UPLOAD_BYTES = 120 * 1024 * 1024; // 120 MB
 
 export async function POST(request: Request) {
@@ -35,9 +36,11 @@ export async function POST(request: Request) {
     const ext = file.name.includes(".")
       ? file.name.slice(file.name.lastIndexOf(".")).toLowerCase()
       : "";
-    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    const isImage = ALLOWED_IMAGE_EXTENSIONS.includes(ext) || file.type.startsWith("image/");
+    const isAudio = ALLOWED_AUDIO_EXTENSIONS.includes(ext);
+    if (!isAudio && !isImage) {
       return NextResponse.json(
-        { error: "صيغة الملف غير مدعومة. الصيغ المدعومة: MP3, M4A, OGG, OPUS, WAV, AAC" },
+        { error: "صيغة الملف غير مدعومة. الصيغ المدعومة: MP3, M4A, OGG, WAV أو صور PNG, JPG, WEBP" },
         { status: 400 }
       );
     }
@@ -59,20 +62,23 @@ export async function POST(request: Request) {
       const uploaded = await uploadAudioToCloudflareR2({
         buffer,
         originalFileName: file.name,
-        mimeType: file.type || "audio/mpeg",
-        folder: identifier || "lessons",
+        mimeType: file.type || (isImage ? "image/png" : "audio/mpeg"),
+        folder: identifier || (isImage ? "mindmaps" : "lessons"),
       });
 
       return NextResponse.json({
         storageMode: "r2",
         audioUrl: uploaded.audioUrl,
+        imageUrl: uploaded.audioUrl,
         identifier: uploaded.identifier,
         fileName: uploaded.fileName,
-        message: "تم رفع الملف الصوتي بنجاح إلى Cloudflare R2!",
+        message: isImage
+          ? "تم رفع صورة الخريطة الذهنية بنجاح إلى Cloudflare R2!"
+          : "تم رفع الملف الصوتي بنجاح إلى Cloudflare R2!",
       });
     }
 
-    if (isArchiveConfigured()) {
+    if (!isImage && isArchiveConfigured()) {
       const data = await getAllData();
       const uploaded = await uploadAudioToInternetArchive({
         buffer,
@@ -92,19 +98,25 @@ export async function POST(request: Request) {
       });
     }
 
-    // Fallback: local storage for development / preview when Archive S3 keys are not set yet
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
+    // Fallback: local storage for development / preview
+    const subFolder = isImage ? "mindmaps" : "";
+    const uploadsDir = subFolder
+      ? path.join(process.cwd(), "public", "uploads", subFolder)
+      : path.join(process.cwd(), "public", "uploads");
     await fs.mkdir(uploadsDir, { recursive: true });
     const safeName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
     await fs.writeFile(path.join(uploadsDir, safeName), buffer);
+    const localUrl = subFolder ? `/uploads/${subFolder}/${safeName}` : `/uploads/${safeName}`;
 
     return NextResponse.json({
       storageMode: "local",
-      audioUrl: `/uploads/${safeName}`,
+      audioUrl: localUrl,
+      imageUrl: localUrl,
       identifier: "",
       fileName: safeName,
-      message:
-        "تم حفظ الملف محلياً للتجربة (مفاتيح Internet Archive غير مضبوطة بعد في .env.local).",
+      message: isImage
+        ? "تم رفع صورة الخريطة الذهنية بنجاح!"
+        : "تم حفظ الملف الصوتي محلياً للتجربة.",
     });
   } catch (err) {
     return NextResponse.json(

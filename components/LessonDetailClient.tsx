@@ -1,25 +1,25 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
-  Check,
   Clock,
   Download,
-  ExternalLink,
   Headphones,
+  Image as ImageIcon,
   Pause,
   Play,
   RotateCcw,
   RotateCw,
-  Share2,
+  X,
+  ZoomIn,
   ChevronRight,
   ChevronLeft,
 } from "lucide-react";
-import type { Lesson, Series } from "@/lib/types";
+import { normalizeMindMapImages, type Lesson, type Series } from "@/lib/types";
 import { useAudioPlayer } from "./AudioPlayerContext";
 import { LessonRow } from "./LessonRow";
 import { formatArabicDate, formatDuration } from "@/lib/format";
@@ -38,7 +38,32 @@ export function LessonDetailClient({
 }) {
   const { currentLesson, isPlaying, playLesson, togglePlay, seek, skipBy, currentTime, duration } =
     useAudioPlayer();
-  const [copied, setCopied] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const mindMaps = useMemo(
+    () => normalizeMindMapImages(lesson.mindMapImages),
+    [lesson.mindMapImages]
+  );
+
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxIndex(null);
+      if (e.key === "ArrowLeft" && mindMaps.length > 1) {
+        setLightboxIndex((prev) => (prev === null ? null : (prev + 1) % mindMaps.length));
+      }
+      if (e.key === "ArrowRight" && mindMaps.length > 1) {
+        setLightboxIndex((prev) =>
+          prev === null ? null : (prev - 1 + mindMaps.length) % mindMaps.length
+        );
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [lightboxIndex, mindMaps.length]);
 
   const isCurrent = currentLesson?.id === lesson.id;
   const isThisPlaying = isCurrent && isPlaying;
@@ -51,16 +76,6 @@ export function LessonDetailClient({
     currentIndex >= 0 && currentIndex < queueToUse.length - 1
       ? queueToUse[currentIndex + 1]
       : null;
-
-  const handleShare = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Ignore
-    }
-  };
 
   const handlePrimaryPlay = () => {
     if (isCurrent) {
@@ -270,47 +285,225 @@ export function LessonDetailClient({
           </div>
         </div>
 
-        {/* Lesson Description & Notes */}
-        <div className="p-6 sm:p-9 space-y-7">
-          {lesson.description && (
-            <div>
-              <h2 className="font-serif-arabic text-xl font-bold text-[#8E3A7A] mb-2">
-                نبذة عن الدرس
-              </h2>
-              <p className="text-[#2B1626] leading-relaxed whitespace-pre-line text-sm sm:text-base">
-                {lesson.description}
-              </p>
-            </div>
-          )}
+        {/* Lesson Description, Notes & Mind Maps */}
+        {(lesson.description || lesson.notes || mindMaps.length > 0) && (
+          <div className="p-6 sm:p-9 space-y-7">
+            {lesson.description && (
+              <div>
+                <h2 className="font-serif-arabic text-xl font-bold text-[#8E3A7A] mb-2">
+                  نبذة عن الدرس
+                </h2>
+                <p className="text-[#2B1626] leading-relaxed whitespace-pre-line text-sm sm:text-base">
+                  {lesson.description}
+                </p>
+              </div>
+            )}
 
-          {lesson.notes && (
-            <div className="rounded-2xl bg-[#FAF3F6] border border-[#EAD5E1] p-6">
-              <h2 className="font-serif-arabic text-xl font-bold text-[#8E3A7A] mb-3 flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-[#B8559B]" />
-                <span>محاور وفوائد الدرس</span>
-              </h2>
-              <div className="text-sm sm:text-base text-[#2B1626] leading-loose whitespace-pre-line">
-                {lesson.notes}
+            {lesson.notes && (
+              <div className="rounded-2xl bg-[#FAF3F6] border border-[#EAD5E1] p-6">
+                <h2 className="font-serif-arabic text-xl font-bold text-[#8E3A7A] mb-3 flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-[#B8559B]" />
+                  <span>محاور وفوائد الدرس</span>
+                </h2>
+                <div className="text-sm sm:text-base text-[#2B1626] leading-loose whitespace-pre-line">
+                  {lesson.notes}
+                </div>
+              </div>
+            )}
+
+            {/* Mind Maps Section — Shown ONLY when mind maps exist for this lesson */}
+            {mindMaps.length > 0 && (
+              <section className="rounded-3xl bg-gradient-to-br from-[#F7FBF8] via-white to-[#FAF3F6] border border-[#C8DFCF] p-5 sm:p-7">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-3 border-b border-[#E2EFE6]">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-2xl bg-[#EBF4EE] border border-[#C8DFCF] text-[#2E5741] flex items-center justify-center shrink-0">
+                      <ImageIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="font-serif-arabic text-xl sm:text-2xl font-bold text-[#2B1626]">
+                        الخرائط الذهنية
+                      </h2>
+                      <p className="text-xs text-[#5C3D55]">
+                        اضغط على أي خريطة لتكبيرها وقراءتها بوضوح أو تحميلها
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#EBF4EE] text-[#2E5741] border border-[#C8DFCF]">
+                    {mindMaps.length === 1 ? "خريطة واحدة" : `${mindMaps.length} خرائط ذهنية`}
+                  </span>
+                </div>
+
+                <div
+                  className={
+                    mindMaps.length === 1
+                      ? "max-w-3xl mx-auto"
+                      : "grid grid-cols-1 sm:grid-cols-2 gap-4"
+                  }
+                >
+                  {mindMaps.map((item, idx) => {
+                    const caption =
+                      item.title?.trim() ||
+                      (mindMaps.length === 1
+                        ? "الخريطة الذهنية للدرس"
+                        : `خريطة ذهنية ${idx + 1} من ${mindMaps.length}`);
+                    return (
+                      <div
+                        key={`${item.url}-${idx}`}
+                        className="group rounded-2xl border border-[#EAD5E1] bg-white overflow-hidden shadow-2xs hover:border-[#3D6B52] hover:shadow-md transition-all flex flex-col"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setLightboxIndex(idx)}
+                          className="relative block w-full overflow-hidden bg-[#FAF3F6]/40 cursor-zoom-in focus:outline-none"
+                        >
+                          <img
+                            src={item.url}
+                            alt={`${caption} — ${lesson.title}`}
+                            className={`w-full object-contain transition-transform duration-300 group-hover:scale-[1.02] ${
+                              mindMaps.length === 1 ? "max-h-[34rem]" : "h-64 sm:h-72"
+                            }`}
+                          />
+                          <div className="absolute inset-0 bg-[#2B1626]/0 group-hover:bg-[#2B1626]/15 transition-colors flex items-center justify-center">
+                            <span className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/95 text-[#8E3A7A] text-xs font-bold shadow-md">
+                              <ZoomIn className="w-4 h-4" />
+                              <span>تكبير الخريطة</span>
+                            </span>
+                          </div>
+                        </button>
+
+                        <div className="px-4 py-3 border-t border-[#FAF3F6] flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1 flex items-center gap-2">
+                            {mindMaps.length > 1 && (
+                              <span className="shrink-0 w-5 h-5 rounded-full bg-[#EBF4EE] text-[#2E5741] border border-[#C8DFCF] text-[10px] font-bold flex items-center justify-center">
+                                {idx + 1}
+                              </span>
+                            )}
+                            <span
+                              className={
+                                item.title?.trim()
+                                  ? "text-sm font-bold text-[#2B1626] leading-snug"
+                                  : "text-xs font-semibold text-[#5C3D55]"
+                              }
+                            >
+                              {caption}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2.5 text-xs shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setLightboxIndex(idx)}
+                              className="inline-flex items-center gap-1 text-[#2E5741] hover:underline font-semibold cursor-pointer"
+                            >
+                              <ZoomIn className="w-3.5 h-3.5" />
+                              <span>تكبير</span>
+                            </button>
+                            <a
+                              href={item.url}
+                              download
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[#8E3A7A] hover:underline font-semibold"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>تحميل</span>
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+      </article>
+
+      {/* Full-Screen Lightbox Viewer for Mind Map Images */}
+      {lightboxIndex !== null && mindMaps[lightboxIndex] && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="عرض الخريطة الذهنية بالحجم الكامل"
+          className="fixed inset-0 z-[9999] bg-[#1A0D17]/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 sm:p-8"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setLightboxIndex(null);
+          }}
+        >
+          {/* Top Bar */}
+          <div className="w-full max-w-5xl flex items-center justify-between gap-3 mb-4 text-white">
+            <div className="min-w-0">
+              <div className="text-sm sm:text-base font-bold truncate">
+                {mindMaps[lightboxIndex].title?.trim() || `الخرائط الذهنية — ${lesson.title}`}
+              </div>
+              <div className="text-[11px] sm:text-xs text-[#EBC6DD] truncate">
+                {mindMaps[lightboxIndex].title?.trim() ? lesson.title : "الخرائط الذهنية"}
+                {mindMaps.length > 1 && (
+                  <span className="mr-2">
+                    ({lightboxIndex + 1} / {mindMaps.length})
+                  </span>
+                )}
               </div>
             </div>
-          )}
-
-          {lesson.archiveIdentifier && (
-            <div className="pt-2 text-xs text-[#6E4E65] flex items-center gap-2 border-t border-[#FAF3F6]">
-              <span>مُستضاف على أرشيف الإنترنت (Internet Archive):</span>
+            <div className="flex items-center gap-2 shrink-0">
               <a
-                href={`https://archive.org/details/${encodeURIComponent(lesson.archiveIdentifier)}`}
+                href={mindMaps[lightboxIndex].url}
+                download
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-[#8E3A7A] hover:underline font-medium"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-semibold transition-colors"
               >
-                <span>فتح المصدر</span>
-                <ExternalLink className="w-3.5 h-3.5" />
+                <Download className="w-4 h-4" />
+                <span>تحميل الصورة</span>
               </a>
+              <button
+                type="button"
+                onClick={() => setLightboxIndex(null)}
+                aria-label="إغلاق"
+                className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-          )}
+          </div>
+
+          {/* Image + Prev/Next */}
+          <div className="relative w-full max-w-5xl flex-1 flex items-center justify-center min-h-0">
+            {mindMaps.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setLightboxIndex((lightboxIndex - 1 + mindMaps.length) % mindMaps.length)
+                }
+                aria-label="الخريطة السابقة"
+                className="absolute right-2 z-10 p-3 rounded-full bg-white/20 hover:bg-white/35 text-white cursor-pointer backdrop-blur-xs"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            )}
+
+            <img
+              src={mindMaps[lightboxIndex].url}
+              alt={
+                mindMaps[lightboxIndex].title?.trim() ||
+                `الخريطة الذهنية ${lightboxIndex + 1}`
+              }
+              className="max-h-[82vh] max-w-full rounded-2xl bg-white object-contain shadow-2xl"
+            />
+
+            {mindMaps.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setLightboxIndex((lightboxIndex + 1) % mindMaps.length)}
+                aria-label="الخريطة التالية"
+                className="absolute left-2 z-10 p-3 rounded-full bg-white/20 hover:bg-white/35 text-white cursor-pointer backdrop-blur-xs"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            )}
+          </div>
         </div>
-      </article>
+      )}
 
       {/* 2. Previous & Next Lesson Navigation Cards */}
       <section className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">

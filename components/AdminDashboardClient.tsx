@@ -20,6 +20,7 @@ import {
   FolderPlus,
   Headphones,
   HelpCircle,
+  Image as ImageIcon,
   KeyRound,
   Layers,
   Loader2,
@@ -37,15 +38,18 @@ import {
   UserPlus,
   Users,
   Video,
+  X,
 } from "lucide-react";
 import {
   ADMIN_PERMISSION_LABELS,
   ALL_ADMIN_PERMISSIONS,
   DEFAULT_CATEGORIES,
+  normalizeMindMapImages,
   type AdminPermission,
   type AdminUser,
   type DatabasePayload,
   type Lesson,
+  type MindMapImage,
   type NotificationType,
   type Series,
   type SiteNotification,
@@ -123,6 +127,9 @@ export function AdminDashboardClient({
   const [lessonDate, setLessonDate] = useState(new Date().toISOString().slice(0, 10));
   const [lessonDescription, setLessonDescription] = useState("");
   const [lessonNotes, setLessonNotes] = useState("");
+  const [lessonMindMapImages, setLessonMindMapImages] = useState<MindMapImage[]>([]);
+  const [mindMapUrlInput, setMindMapUrlInput] = useState("");
+  const [uploadingMindMap, setUploadingMindMap] = useState(false);
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [savingLesson, setSavingLesson] = useState(false);
 
@@ -297,6 +304,44 @@ export function AdminDashboardClient({
     }
   };
 
+  const handleMindMapFilesUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploadingMindMap(true);
+    setNotice(null);
+    const uploadedItems: MindMapImage[] = [];
+    try {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("identifier", "mindmaps");
+        fd.append("title", lessonTitle || file.name.replace(/\.[^.]+$/, ""));
+        const res = await fetch("/api/archive/upload", { method: "POST", body: fd });
+        const result = await res.json();
+        if (!res.ok) {
+          showNotice("error", result.error || `فشل رفع الصورة: ${file.name}`);
+          continue;
+        }
+        const url = result.imageUrl || result.audioUrl;
+        if (url) uploadedItems.push({ url, title: "" });
+      }
+      if (uploadedItems.length > 0) {
+        setLessonMindMapImages((prev) => [...prev, ...uploadedItems]);
+        showNotice(
+          "success",
+          uploadedItems.length === 1
+            ? "تم رفع صورة الخريطة الذهنية بنجاح! يمكنك كتابة عنوان لها أسفل الصورة ثم الضغط على «حفظ»."
+            : `تم رفع ${uploadedItems.length} صور خرائط ذهنية بنجاح! يمكنك تسمية كل صورة ثم الضغط على «حفظ».`
+        );
+      }
+    } catch {
+      showNotice("error", "حدث خطأ أثناء رفع صور الخرائط الذهنية");
+    } finally {
+      setUploadingMindMap(false);
+      e.target.value = "";
+    }
+  };
+
   const resetLessonForm = () => {
     setEditingLessonId(null);
     setLessonTitle("");
@@ -309,6 +354,8 @@ export function AdminDashboardClient({
     setLessonDate(new Date().toISOString().slice(0, 10));
     setLessonDescription("");
     setLessonNotes("");
+    setLessonMindMapImages([]);
+    setMindMapUrlInput("");
   };
 
   const startEditLesson = (lesson: Lesson) => {
@@ -323,6 +370,8 @@ export function AdminDashboardClient({
     setLessonDate(lesson.publishedAt || new Date().toISOString().slice(0, 10));
     setLessonDescription(lesson.description || "");
     setLessonNotes(lesson.notes || "");
+    setLessonMindMapImages(normalizeMindMapImages(lesson.mindMapImages));
+    setMindMapUrlInput("");
     setTab("lessons");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -343,6 +392,7 @@ export function AdminDashboardClient({
       publishedAt: lessonDate,
       description: lessonDescription,
       notes: lessonNotes,
+      mindMapImages: lessonMindMapImages,
     };
 
     try {
@@ -1092,6 +1142,115 @@ export function AdminDashboardClient({
                 />
               </div>
 
+              {/* Mind Maps Images Upload & Manager */}
+              <div className="rounded-xl border border-[#C8DFCF] bg-[#F7FBF8] p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-bold text-[#2E5741] flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-[#3D6B52]" />
+                    <span>الخرائط الذهنية للدرس (اختياري — صورة أو أكثر)</span>
+                  </label>
+                  {lessonMindMapImages.length > 0 && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#EBF4EE] text-[#2E5741] border border-[#C8DFCF]">
+                      {lessonMindMapImages.length} {lessonMindMapImages.length === 1 ? "صورة" : "صور"}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-[#2E5741] hover:bg-[#234432] text-white text-xs font-semibold cursor-pointer transition-colors">
+                    {uploadingMindMap ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <ImageIcon className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {uploadingMindMap ? "جارٍ رفع الصور..." : "رفع صور الخرائط الذهنية"}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*,.png,.jpg,.jpeg,.webp"
+                      multiple
+                      onChange={handleMindMapFilesUpload}
+                      disabled={uploadingMindMap}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* Optional paste image URL */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    dir="ltr"
+                    value={mindMapUrlInput}
+                    onChange={(e) => setMindMapUrlInput(e.target.value)}
+                    placeholder="أو الصق رابط صورة مباشر (https://...)"
+                    className="flex-1 px-3 py-1.5 rounded-lg border border-[#C8DFCF] bg-white text-xs text-left focus:outline-none focus:border-[#2E5741]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const trimmed = mindMapUrlInput.trim();
+                      if (!trimmed) return;
+                      setLessonMindMapImages((prev) => [...prev, { url: trimmed, title: "" }]);
+                      setMindMapUrlInput("");
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-white border border-[#C8DFCF] hover:bg-[#EBF4EE] text-[#2E5741] text-xs font-semibold cursor-pointer shrink-0"
+                  >
+                    إضافة رابط
+                  </button>
+                </div>
+
+                {/* Thumbnails preview with per-image title input */}
+                {lessonMindMapImages.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {lessonMindMapImages.map((item, idx) => (
+                      <div
+                        key={`${item.url}-${idx}`}
+                        className="rounded-xl overflow-hidden border border-[#C8DFCF] bg-white flex flex-col"
+                      >
+                        <div className="relative aspect-[16/10] bg-[#FAF3F6]/50 overflow-hidden">
+                          <img
+                            src={item.url}
+                            alt={item.title || `خريطة ذهنية ${idx + 1}`}
+                            className="w-full h-full object-contain"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLessonMindMapImages((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                            title="حذف الصورة"
+                            className="absolute top-1.5 left-1.5 p-1 rounded-full bg-red-600/90 hover:bg-red-700 text-white shadow-xs cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                          <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[10px]">
+                            #{idx + 1}
+                          </span>
+                        </div>
+                        <div className="p-2 border-t border-[#E2EFE6] bg-[#F7FBF8]/60">
+                          <input
+                            type="text"
+                            value={item.title || ""}
+                            onChange={(e) => {
+                              const nextTitle = e.target.value;
+                              setLessonMindMapImages((prev) =>
+                                prev.map((entry, i) =>
+                                  i === idx ? { ...entry, title: nextTitle } : entry
+                                )
+                              );
+                            }}
+                            placeholder="عنوان أو فائدة الصورة (مثال: ملخص محاور الدرس)"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-[#C8DFCF] bg-white text-xs text-[#2D1626] placeholder:text-[#8A6D81] focus:outline-none focus:border-[#2E5741]"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button
                 type="submit"
                 disabled={savingLesson}
@@ -1127,6 +1286,12 @@ export function AdminDashboardClient({
                           <span>{seriesNameById(lesson.seriesId)}</span>
                           {lesson.durationSeconds > 0 && (
                             <span>• {formatDuration(lesson.durationSeconds)}</span>
+                          )}
+                          {lesson.mindMapImages && lesson.mindMapImages.length > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#EBF4EE] text-[#2E5741] font-semibold">
+                              <ImageIcon className="w-3 h-3" />
+                              {lesson.mindMapImages.length} خريطة ذهنية
+                            </span>
                           )}
                         </div>
                         <p className="font-semibold text-sm text-[#2D1626] truncate">

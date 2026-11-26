@@ -24,7 +24,9 @@ function safeDecode(value: string): string {
 
 export function LessonPageDynamicClient({ initialId }: { initialId: string }) {
   const pathname = usePathname();
-  const [browserPath, setBrowserPath] = useState<string>("");
+  const [browserPath, setBrowserPath] = useState<string>(() =>
+    typeof window !== "undefined" ? window.location.pathname : ""
+  );
   const [data, setData] = useState<DatabasePayload>(fallbackData as unknown as DatabasePayload);
 
   useEffect(() => {

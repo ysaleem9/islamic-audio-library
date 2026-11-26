@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSession, hasAdminPermission } from "@/lib/auth";
 import { createLesson, getAllData } from "@/lib/store";
+import { normalizeMindMapImages } from "@/lib/types";
 
 export async function GET() {
   const data = await getAllData();
@@ -73,6 +74,7 @@ export async function POST(request: Request) {
       durationSeconds: Number(body.durationSeconds || 0),
       publishedAt: body.publishedAt ? String(body.publishedAt) : undefined,
       isFeatured: Boolean(body.isFeatured),
+      mindMapImages: normalizeMindMapImages(body.mindMapImages),
     });
 
     return NextResponse.json(created, { status: 201 });

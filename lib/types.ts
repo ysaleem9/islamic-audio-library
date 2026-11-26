@@ -50,6 +50,37 @@ export interface Series {
   createdAt: string;
 }
 
+export interface MindMapImage {
+  url: string;
+  title?: string;
+}
+
+export function normalizeMindMapImages(val: unknown): MindMapImage[] {
+  let arr: unknown[] = [];
+  if (Array.isArray(val)) {
+    arr = val;
+  } else if (typeof val === "string" && val.trim()) {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) arr = parsed;
+    } catch {
+      return [];
+    }
+  }
+  const result: MindMapImage[] = [];
+  for (const item of arr) {
+    if (typeof item === "string") {
+      const url = item.trim();
+      if (url) result.push({ url, title: "" });
+    } else if (item && typeof item === "object" && "url" in item) {
+      const url = String((item as { url?: unknown }).url || "").trim();
+      const title = String((item as { title?: unknown }).title || "").trim();
+      if (url) result.push({ url, title });
+    }
+  }
+  return result;
+}
+
 export interface Lesson {
   id: string;
   title: string;
@@ -64,6 +95,7 @@ export interface Lesson {
   publishedAt: string;
   playsCount: number;
   isFeatured: boolean;
+  mindMapImages?: MindMapImage[];
   createdAt: string;
 }
 

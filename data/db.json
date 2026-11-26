@@ -23,66 +23,6 @@
       "createdAt": "2026-11-23T06:35:57.999Z"
     },
     {
-      "id": "ser-6e7ca66c5d",
-      "title": "مفاهيم ومقاصد قرآنية",
-      "slug": "مفاهيم-ومقاصد-قرآنية-6c5d",
-      "parentId": null,
-      "category": "التربية الإيمانية",
-      "description": "",
-      "status": "ongoing",
-      "coverAccent": "emerald",
-      "sortOrder": 0,
-      "createdAt": "2026-11-23T06:37:04.162Z"
-    },
-    {
-      "id": "ser-bf0720a6ee",
-      "title": "وقفات مع آية",
-      "slug": "وقفات-مه-آية-a6ee",
-      "parentId": null,
-      "category": "تفسير القرآن الكريم",
-      "description": "",
-      "status": "ongoing",
-      "coverAccent": "emerald",
-      "sortOrder": 0,
-      "createdAt": "2026-11-23T06:37:23.222Z"
-    },
-    {
-      "id": "ser-fda2083231",
-      "title": "سلاسل إيمانية",
-      "slug": "سلاسل-إيمانية-3231",
-      "parentId": null,
-      "category": "تفسير القرآن الكريم",
-      "description": "",
-      "status": "ongoing",
-      "coverAccent": "emerald",
-      "sortOrder": 0,
-      "createdAt": "2026-11-23T06:38:02.335Z"
-    },
-    {
-      "id": "ser-6edf526b54",
-      "title": "نفحات رمضانية",
-      "slug": "نفحات-رمضانية-6b54",
-      "parentId": null,
-      "category": "التربية الإيمانية",
-      "description": "",
-      "status": "ongoing",
-      "coverAccent": "emerald",
-      "sortOrder": 5,
-      "createdAt": "2026-11-23T06:38:49.470Z"
-    },
-    {
-      "id": "ser-527bffa70b",
-      "title": "رقائق و مواعظ",
-      "slug": "رقائق-و-مواعظ-a70b",
-      "parentId": null,
-      "category": "تفسير القرآن الكريم",
-      "description": "",
-      "status": "ongoing",
-      "coverAccent": "emerald",
-      "sortOrder": 6,
-      "createdAt": "2026-11-23T06:39:02.151Z"
-    },
-    {
       "id": "ser-99b6a4fa1c",
       "title": "سورة البقرة",
       "slug": "سورة-البقرة-fa1c",
@@ -744,9 +684,19 @@
       "archiveIdentifier": "",
       "durationSeconds": 0,
       "publishedAt": "2026-11-23",
-      "playsCount": 0,
+      "playsCount": 2,
       "isFeatured": false,
-      "createdAt": "2026-11-23T07:38:09.774Z"
+      "createdAt": "2026-11-23T07:38:09.774Z",
+      "mindMapImages": [
+        {
+          "url": "/uploads/mindmaps/1795683092639-882773506_18451820833120960_8223901461676696978_n.jpg",
+          "title": ""
+        },
+        {
+          "url": "/uploads/mindmaps/1795683093282-Whats_Up_Logo_Group.png",
+          "title": "شرح المعاني الكاملة"
+        }
+      ]
     },
     {
       "id": "les-6ffc241251",

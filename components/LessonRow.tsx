@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Clock,
   Download,
+  Image as ImageIcon,
   Pause,
   Play,
 } from "lucide-react";
@@ -86,6 +87,14 @@ export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRow
               >
                 سلسلة: {series.title}
               </Link>
+            )}
+            {lesson.mindMapImages && lesson.mindMapImages.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-[#2E5741] font-semibold text-[11px] bg-[#EBF4EE] border border-[#C8DFCF] px-2 py-0.5 rounded-md">
+                <ImageIcon className="w-3 h-3" />
+                {lesson.mindMapImages.length === 1
+                  ? "خريطة ذهنية"
+                  : `${lesson.mindMapImages.length} خرائط ذهنية`}
+              </span>
             )}
             {progress?.completed && (
               <span className="inline-flex items-center gap-1 text-[#3D6B52] font-semibold text-[11px] bg-[#EBF4EE] px-2 py-0.5 rounded-md">
