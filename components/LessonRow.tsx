@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import type { Lesson, Series } from "@/lib/types";
 import { useAudioPlayer } from "./AudioPlayerContext";
-import { formatArabicDate, formatDuration } from "@/lib/format";
+import { formatDuration } from "@/lib/format";
 import { ShareMenu } from "./ShareMenu";
 
 interface LessonRowProps {
@@ -132,16 +132,13 @@ export function LessonRow({ lesson, series, queue, showEpisodeBadge }: LessonRow
             </div>
           )}
 
-          {/* Meta footer: Duration, Date, Actions */}
+          {/* Meta footer: Duration (only if > 0) & Actions */}
           <div className="mt-3 pt-2.5 border-t border-[#FAF3F6] flex flex-wrap items-center justify-between gap-3 text-xs text-[#6E4E65]">
             <div className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-[#D68FBF]" />
-                {formatDuration(lesson.durationSeconds)}
-              </span>
-              {lesson.publishedAt && (
-                <span className="hidden sm:inline">
-                  {formatArabicDate(lesson.publishedAt)}
+              {lesson.durationSeconds > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-[#D68FBF]" />
+                  {formatDuration(lesson.durationSeconds)}
                 </span>
               )}
             </div>

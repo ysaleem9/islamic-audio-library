@@ -22,7 +22,7 @@ import {
 import { normalizeMindMapImages, type Lesson, type Series } from "@/lib/types";
 import { useAudioPlayer } from "./AudioPlayerContext";
 import { LessonRow } from "./LessonRow";
-import { formatArabicDate, formatDuration } from "@/lib/format";
+import { formatDuration } from "@/lib/format";
 import { ShareMenu } from "./ShareMenu";
 
 export function LessonDetailClient({
@@ -165,9 +165,6 @@ export function LessonDetailClient({
                 <Clock className="w-4 h-4 text-[#B8559B]" />
                 {formatDuration(lesson.durationSeconds)}
               </span>
-            )}
-            {lesson.publishedAt && (
-              <span>تاريخ الإضافة: {formatArabicDate(lesson.publishedAt)}</span>
             )}
             <span className="inline-flex items-center gap-1.5">
               <Headphones className="w-4 h-4 text-[#D68FBF]" />
@@ -520,9 +517,11 @@ export function LessonDetailClient({
             <div className="font-serif-arabic text-base sm:text-lg font-bold text-[#2B1626] group-hover:text-[#8E3A7A] line-clamp-2">
               {prevLesson.title}
             </div>
-            <div className="mt-2 text-xs text-[#6E4E65]">
-              {formatDuration(prevLesson.durationSeconds)}
-            </div>
+            {prevLesson.durationSeconds > 0 && (
+              <div className="mt-2 text-xs text-[#6E4E65]">
+                {formatDuration(prevLesson.durationSeconds)}
+              </div>
+            )}
           </Link>
         ) : (
           <div className="p-5 rounded-2xl border border-dashed border-[#EAD5E1] bg-[#FAF3F6]/50 text-xs text-[#6E4E65] flex items-center justify-center">
@@ -543,9 +542,11 @@ export function LessonDetailClient({
             <div className="font-serif-arabic text-base sm:text-lg font-bold text-[#2B1626] group-hover:text-[#8E3A7A] line-clamp-2 text-right">
               {nextLesson.title}
             </div>
-            <div className="mt-2 text-xs text-[#6E4E65] text-right">
-              {formatDuration(nextLesson.durationSeconds)}
-            </div>
+            {nextLesson.durationSeconds > 0 && (
+              <div className="mt-2 text-xs text-[#6E4E65] text-right">
+                {formatDuration(nextLesson.durationSeconds)}
+              </div>
+            )}
           </Link>
         ) : (
           <div className="p-5 rounded-2xl border border-dashed border-[#EAD5E1] bg-[#FAF3F6]/50 text-xs text-[#6E4E65] flex items-center justify-center">

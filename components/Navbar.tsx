@@ -7,7 +7,6 @@ import {
   Headphones,
   Menu,
   X,
-  Grid,
 } from "lucide-react";
 import { LogoAnzalahu } from "./LogoAnzalahu";
 import { NotificationBell } from "./NotificationBell";
@@ -38,13 +37,6 @@ export function Navbar({ siteName }: NavbarProps) {
             className="px-3.5 py-2 rounded-xl text-[#2B1626] font-medium hover:text-[#8E3A7A] hover:bg-[#EBC6DD]/40 transition-colors"
           >
             الرئيسية
-          </Link>
-          <Link
-            href="/#categories"
-            className="px-3.5 py-2 rounded-xl text-[#2B1626] font-medium hover:text-[#8E3A7A] hover:bg-[#EBC6DD]/40 transition-colors flex items-center gap-1.5"
-          >
-            <Grid className="w-4 h-4 text-[#B8559B]" />
-            <span>التصنيفات</span>
           </Link>
           <Link
             href="/#series"
@@ -90,14 +82,6 @@ export function Navbar({ siteName }: NavbarProps) {
               className="px-4 py-2.5 rounded-xl font-medium text-[#2B1626] hover:bg-[#EBC6DD]/40 hover:text-[#8E3A7A]"
             >
               الرئيسية
-            </Link>
-            <Link
-              href="/#categories"
-              onClick={() => setMobileMenuOpen(false)}
-              className="px-4 py-2.5 rounded-xl font-medium text-[#2B1626] hover:bg-[#EBC6DD]/40 hover:text-[#8E3A7A] flex items-center gap-2"
-            >
-              <Grid className="w-4 h-4 text-[#B8559B]" />
-              <span>التصنيفات العلمية</span>
             </Link>
             <Link
               href="/#series"

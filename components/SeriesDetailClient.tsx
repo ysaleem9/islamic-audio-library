@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
   ChevronLeft,
+  ChevronRight,
   Clock,
   FolderOpen,
   Layers,
@@ -37,6 +38,26 @@ export function SeriesDetailClient({
   sheikhName: string;
 }) {
   const { playLesson } = useAudioPlayer();
+  const [lessonsPage, setLessonsPage] = useState(1);
+  const LESSONS_PER_PAGE = 5;
+
+  useEffect(() => {
+    setLessonsPage(1);
+  }, [series.id]);
+
+  const totalLessonsPages = Math.max(1, Math.ceil(lessons.length / LESSONS_PER_PAGE));
+  const currentLessonsPage = Math.min(lessonsPage, totalLessonsPages);
+  const pageStartIdx = (currentLessonsPage - 1) * LESSONS_PER_PAGE;
+  const paginatedLessons = lessons.slice(pageStartIdx, pageStartIdx + LESSONS_PER_PAGE);
+
+  const goToLessonsPage = (nextPage: number) => {
+    const clamped = Math.max(1, Math.min(totalLessonsPages, nextPage));
+    setLessonsPage(clamped);
+    const el = document.getElementById("series-lessons");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
 
   const ancestors = useMemo(
     () => getSeriesAncestors(allSeries, series.id),
@@ -270,7 +291,7 @@ export function SeriesDetailClient({
 
       {/* Direct Series Lessons List Section */}
       {(lessons.length > 0 || childSeries.length === 0) && (
-        <section className="max-w-5xl mx-auto px-4 mt-12">
+        <section id="series-lessons" className="max-w-5xl mx-auto px-4 mt-12 scroll-mt-24">
           <div className="flex items-center justify-between gap-4 mb-6 pb-3 border-b border-[#EAD5E1]">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-[#FAF3F6] border border-[#EBC6DD] text-[#8E3A7A] flex items-center justify-center">
@@ -296,17 +317,59 @@ export function SeriesDetailClient({
               لم تُضف دروس إلى هذه القائمة بعد.
             </div>
           ) : (
-            <div className="space-y-3.5">
-              {lessons.map((lesson) => (
-                <LessonRow
-                  key={lesson.id}
-                  lesson={lesson}
-                  series={series}
-                  queue={lessons}
-                  showEpisodeBadge
-                />
-              ))}
-            </div>
+            <>
+              <div className="space-y-3.5">
+                {paginatedLessons.map((lesson) => (
+                  <LessonRow
+                    key={lesson.id}
+                    lesson={lesson}
+                    series={series}
+                    queue={lessons}
+                    showEpisodeBadge
+                  />
+                ))}
+              </div>
+
+              {lessons.length > LESSONS_PER_PAGE && (
+                <div className="mt-7 rounded-2xl border border-[#EAD5E1] bg-white px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-2xs">
+                  <div className="text-xs sm:text-sm text-[#5C3D55]">
+                    عرض{" "}
+                    <strong className="text-[#8E3A7A]">
+                      {pageStartIdx + 1} – {Math.min(pageStartIdx + LESSONS_PER_PAGE, lessons.length)}
+                    </strong>{" "}
+                    من أصل{" "}
+                    <strong className="text-[#2E5741]">{lessons.length}</strong> درساً
+                    <span className="mx-2 text-[#D68FBF]">•</span>
+                    <span>
+                      صفحة <strong>{currentLessonsPage}</strong> من{" "}
+                      <strong>{totalLessonsPages}</strong>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      disabled={currentLessonsPage <= 1}
+                      onClick={() => goToLessonsPage(currentLessonsPage - 1)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-[#EAD5E1] bg-white text-xs sm:text-sm font-semibold text-[#8E3A7A] hover:bg-[#FAF3F6] hover:border-[#8E3A7A] transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-[#EAD5E1]"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                      <span>السابق</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={currentLessonsPage >= totalLessonsPages}
+                      onClick={() => goToLessonsPage(currentLessonsPage + 1)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#8E3A7A] hover:bg-[#752D64] text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-[#8E3A7A]"
+                    >
+                      <span>التالي</span>
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </section>
       )}
