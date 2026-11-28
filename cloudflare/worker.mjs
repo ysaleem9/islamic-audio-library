@@ -1168,8 +1168,24 @@ async function handleSitemapXml(env) {
   });
 }
 
+function withSecurityHeaders(res) {
+  const headers = new Headers(res.headers);
+  headers.set("X-Frame-Options", "SAMEORIGIN");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 export default {
   async fetch(request, env) {
+    const res = await handleRequest(request, env);
+    return withSecurityHeaders(res);
+  },
+};
+
+async function handleRequest(request, env) {
     const url = new URL(request.url);
 
     if (url.pathname === "/googlec323364ba8c8a7ad.html") {
@@ -1281,5 +1297,4 @@ export default {
     }
 
     return assetRes;
-  },
-};
+}
