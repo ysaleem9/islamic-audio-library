@@ -1069,23 +1069,120 @@ function escapeHtmlAttr(str) {
     .replace(/>/g, "&gt;");
 }
 
-async function injectSocialMeta(res, title, description) {
+async function injectSocialMeta(res, title, description, canonicalPath = "", extraJsonLd = null) {
   const ct = res.headers.get("content-type") || "";
   if (!ct.includes("text/html") || !title) return res;
   const html = await res.text();
   const safeTitle = escapeHtmlAttr(`${title} — الأستاذة فاطمة حجازي`);
-  const safeDesc = escapeHtmlAttr(description || "استمع وحمّل الدروس العلمية والشروحات المنهجية للأستاذة فاطمة حجازي — منصة أنزله بعلمه.");
-  const ogTags = `<meta property="og:title" content="${safeTitle}" /><meta property="og:description" content="${safeDesc}" /><meta name="twitter:title" content="${safeTitle}" />`;
+  const safeDesc = escapeHtmlAttr(
+    description ||
+      `استمع وحمّل درس ${title} للأستاذة فاطمة حجازي (الداعية فاطمة حجازي) — منصة أنزله بعلمه في رحاب القرآن الكريم.`
+  );
+  const canonicalUrl = canonicalPath
+    ? `https://www.fatimahijazi.com${canonicalPath}`
+    : "https://www.fatimahijazi.com/";
+  const jsonLdTag = extraJsonLd
+    ? `<script type="application/ld+json">${JSON.stringify(extraJsonLd)}</script>`
+    : "";
+  const seoTags =
+    `<meta name="description" content="${safeDesc}" />` +
+    `<link rel="canonical" href="${escapeHtmlAttr(canonicalUrl)}" />` +
+    `<meta property="og:title" content="${safeTitle}" />` +
+    `<meta property="og:description" content="${safeDesc}" />` +
+    `<meta property="og:url" content="${escapeHtmlAttr(canonicalUrl)}" />` +
+    `<meta name="twitter:title" content="${safeTitle}" />` +
+    `<meta name="twitter:description" content="${safeDesc}" />` +
+    jsonLdTag;
+
   const updatedHtml = html
-    .replace(/<title>[^<]*<\/title>/i, `<title>${safeTitle}</title>${ogTags}`);
+    .replace(/<meta name="description"[^>]*>/i, "")
+    .replace(/<link rel="canonical"[^>]*>/i, "")
+    .replace(/<title>[^<]*<\/title>/i, `<title>${safeTitle}</title>${seoTags}`);
   const headers = new Headers(res.headers);
   headers.delete("content-length");
   return new Response(updatedHtml, { status: res.status, headers });
 }
 
+function escapeXml(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+async function handleRobotsTxt() {
+  const body = [
+    "User-agent: *",
+    "Allow: /",
+    "Disallow: /admin",
+    "Disallow: /admin/",
+    "Disallow: /api/",
+    "",
+    "Sitemap: https://www.fatimahijazi.com/sitemap.xml",
+    "",
+  ].join("\n");
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "public, max-age=86400",
+    },
+  });
+}
+
+async function handleSitemapXml(env) {
+  const base = "https://www.fatimahijazi.com";
+  const today = new Date().toISOString().slice(0, 10);
+  const [seriesRes, lessonsRes] = await Promise.all([
+    env.DB.prepare("SELECT id, created_at FROM series ORDER BY sort_order ASC, created_at DESC").all(),
+    env.DB.prepare("SELECT id, published_at, created_at FROM lessons ORDER BY published_at DESC, created_at DESC").all(),
+  ]);
+
+  const urls = [
+    `  <url><loc>${base}/</loc><lastmod>${today}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>`,
+  ];
+
+  for (const s of seriesRes.results || []) {
+    const lastmod = String(s.created_at || today).slice(0, 10);
+    urls.push(
+      `  <url><loc>${base}/series/${escapeXml(encodeURIComponent(String(s.id)))}</loc><lastmod>${escapeXml(lastmod)}</lastmod><changefreq>weekly</changefreq><priority>0.85</priority></url>`
+    );
+  }
+
+  for (const l of lessonsRes.results || []) {
+    const lastmod = String(l.published_at || l.created_at || today).slice(0, 10);
+    urls.push(
+      `  <url><loc>${base}/lessons/${escapeXml(encodeURIComponent(String(l.id)))}</loc><lastmod>${escapeXml(lastmod)}</lastmod><changefreq>monthly</changefreq><priority>0.80</priority></url>`
+    );
+  }
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
+  return new Response(xml, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/xml; charset=utf-8",
+      "Cache-Control": "public, max-age=3600",
+    },
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/robots.txt") {
+      return handleRobotsTxt();
+    }
+
+    if (url.pathname === "/sitemap.xml") {
+      try {
+        return await handleSitemapXml(env);
+      } catch {
+        return new Response("Sitemap error", { status: 500 });
+      }
+    }
 
     if (url.pathname.startsWith("/api/")) {
       try {
@@ -1108,9 +1205,30 @@ export default {
         try {
           const seg = decodeURIComponent(url.pathname.split("/").filter(Boolean)[1] || "");
           if (seg && seg !== "placeholder") {
-            const row = await env.DB.prepare("SELECT title, description FROM lessons WHERE id = ?1 LIMIT 1").bind(seg).first();
+            const row = await env.DB.prepare(
+              "SELECT id, title, description, audio_url, published_at FROM lessons WHERE id = ?1 LIMIT 1"
+            )
+              .bind(seg)
+              .first();
             if (row?.title) {
-              return injectSocialMeta(res, row.title, row.description);
+              const lessonPath = `/lessons/${encodeURIComponent(String(row.id))}`;
+              const audioLd = {
+                "@context": "https://schema.org",
+                "@type": "AudioObject",
+                name: row.title,
+                description:
+                  row.description ||
+                  `درس ${row.title} للأستاذة فاطمة حجازي — منصة أنزله بعلمه.`,
+                contentUrl: row.audio_url || undefined,
+                url: `https://www.fatimahijazi.com${lessonPath}`,
+                inLanguage: "ar",
+                author: {
+                  "@type": "Person",
+                  name: "الأستاذة فاطمة حجازي",
+                  alternateName: ["فاطمة حجازي", "الداعية فاطمة حجازي"],
+                },
+              };
+              return injectSocialMeta(res, row.title, row.description, lessonPath, audioLd);
             }
           }
         } catch {
@@ -1128,9 +1246,24 @@ export default {
         try {
           const seg = decodeURIComponent(url.pathname.split("/").filter(Boolean)[1] || "");
           if (seg && seg !== "placeholder") {
-            const row = await env.DB.prepare("SELECT title, description FROM series WHERE id = ?1 OR slug = ?1 LIMIT 1").bind(seg).first();
+            const row = await env.DB.prepare(
+              "SELECT id, title, description FROM series WHERE id = ?1 OR slug = ?1 LIMIT 1"
+            )
+              .bind(seg)
+              .first();
             if (row?.title) {
-              return injectSocialMeta(res, row.title, row.description);
+              const seriesPath = `/series/${encodeURIComponent(String(row.id))}`;
+              const colLd = {
+                "@context": "https://schema.org",
+                "@type": "CollectionPage",
+                name: `${row.title} — الأستاذة فاطمة حجازي`,
+                description:
+                  row.description ||
+                  `سلسلة دروس ${row.title} للأستاذة فاطمة حجازي — في رحاب القرآن الكريم.`,
+                url: `https://www.fatimahijazi.com${seriesPath}`,
+                inLanguage: "ar",
+              };
+              return injectSocialMeta(res, row.title, row.description, seriesPath, colLd);
             }
           }
         } catch {
