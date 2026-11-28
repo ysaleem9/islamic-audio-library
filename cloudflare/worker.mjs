@@ -1172,6 +1172,13 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (url.pathname === "/googlec323364ba8c8a7ad.html") {
+      return new Response("google-site-verification: googlec323364ba8c8a7ad.html", {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
     if (url.pathname === "/robots.txt") {
       return handleRobotsTxt();
     }
